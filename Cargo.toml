@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 mutual = "1.0.2"
-ui_shaders = { path = "./shaders" }
 anarchy = { path = "../anarchy" }
 cell = { path = "../cell" }
 gearbox = { path = "../gearbox" }
