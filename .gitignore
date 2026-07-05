@@ -1,0 +1,7 @@
+target/
+shader_dbg/
+shader_out/
+
+*.lock
+*.glb
+*.png
