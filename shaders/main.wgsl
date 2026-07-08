@@ -1,16 +1,13 @@
-#import textures
-#import ui_sdf_lib
-
 struct VertexOutput {
     @builtin(position) screen_position: vec4<f32>
 };
 
-@group(1) @binding(0) var<uniform> metadata: SDFMetadata;
-@group(1) @binding(1) var<uniform> shapes: array<SDFShape, 10000>;
-@group(1) @binding(2) var<uniform> styles: array<SDFStyle, 1000>;
-@group(1) @binding(3) var<uniform> rectangles: array<SDFRectangle, 1000>;
-@group(1) @binding(4) var<uniform> bezier: array<SDFBezier, 10000>;
-@group(1) @binding(5) var<uniform> glyphs: array<SDFGlyph, 1000>;
+@group(0) @binding(0) var<uniform> metadata: SDFMetadata;
+@group(0) @binding(1) var<uniform> shapes: array<SDFShape, 1000>;
+@group(0) @binding(2) var<uniform> styles: array<SDFStyle, 1000>;
+@group(0) @binding(3) var<uniform> rectangles: array<SDFRectangle, 1000>;
+@group(0) @binding(4) var<uniform> bezier: array<SDFBezier, 1000>;
+@group(0) @binding(5) var<uniform> glyphs: array<SDFGlyph, 1000>;
 
 // Metadata required to draw 2D SDF shapes.
 //
@@ -188,19 +185,21 @@ fn walk_shape_tree(parent: SDFShape, point: vec2<f32>) -> vec4<f32> {
 }
 
 fn blend_shape(
-    @mut color: vec4<f32>,
+    in_color: vec4<f32>,
     point: vec2<f32>,
     shape: SDFShape,
     style: SDFStyle,
     d: f32
 ) -> vec4<f32> {
+    var color = in_color;
+
     // calculate primary color with texture
     var primary_color = style.primary_color;
-    if style.texture_ptr != 0xFFFFFFFFu {
-        let uv = (point - shape.center + (shape.dimensions / 2.0)) / shape.dimensions;
-        let tex_color = texture_sample(style.texture_ptr, uv);
-        primary_color = tex_color * primary_color;
-    }
+    // if style.texture_ptr != 0xFFFFFFFFu {
+    //     let uv = (point - shape.center + (shape.dimensions / 2.0)) / shape.dimensions;
+    //     let tex_color = texture_sample(style.texture_ptr, uv);
+    //     primary_color = tex_color * primary_color;
+    // }
 
     // calculate local color with borders taken into account
     let border_mult = clamp(-d - style.border_width, 0.0, 1.0);
@@ -215,21 +214,19 @@ fn blend_shape(
     return color + vec4<f32>(local_color.r * local_color.a, local_color.g * local_color.a, local_color.b * local_color.a, local_color.a);
 }
 
-@vertex
-fn draw_sdfs(
-    in: VertexOutput
-) -> @location(0) color: vec4<f32> {
+@fragment
+fn fs_final(in: VertexOutput) -> @location(0) vec4<f32> {
     let point = in.screen_position.xy;
 
     let shape = shapes[0];
-    out.color = walk_shape_tree(shape, point);
-    if out.color.a > 0.0 && out.color.a < 1.0 { 
-        out.color.r *= out.color.a;
-        out.color.g *= out.color.a;
-        out.color.b *= out.color.a;
-        out.color.a = 1.0;
+    var color = walk_shape_tree(shape, point);
+    if color.a > 0.0 && color.a < 1.0 { 
+        color.r *= color.a;
+        color.g *= color.a;
+        color.b *= color.a;
+        color.a = 1.0;
     }
-    return out;
+    return color;
 }
 
 fn sdf_circle(
