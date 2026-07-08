@@ -25,15 +25,6 @@ pub struct SDFRawMetadata {
 unsafe impl Pod for SDFRawMetadata {}
 unsafe impl Zeroable for SDFRawMetadata {}
 
-/// Modes that `SDFMetadata` can use.
-#[repr(u32)]
-#[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq)]
-pub enum SDFMode {
-    #[default]
-    Normal = 0,
-    HashColor = 1
-}
-
 /// Raw data associated with the shaders implementation of SDFShape
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq)]
 #[repr(C)]

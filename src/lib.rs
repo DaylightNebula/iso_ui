@@ -3,8 +3,9 @@ use cell::{App, Frame, Graphics, Plugin};
 use magician_vgpu::{Buffer, LoadOp, MutableBuffer, PassAttachment, PassTarget, Pipeline, ShaderSource, ShaderType, StoreOp};
 use mutual::CowData;
 
-use crate::shader::{SDFMode, SDFRawBezier, SDFRawGlyph, SDFRawMetadata, SDFRawRectangle, SDFRawShaderData, SDFRawShape, SDFRawStyle};
+use crate::{data::SDFMode, shader::{SDFRawBezier, SDFRawGlyph, SDFRawMetadata, SDFRawRectangle, SDFRawShaderData, SDFRawShape, SDFRawStyle}};
 
+pub mod data;
 pub mod shader;
 
 pub struct UIPlugin;
