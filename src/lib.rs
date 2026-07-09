@@ -1,12 +1,18 @@
+#![feature(linked_list_cursors)]
+
 use anarchy::{Res, ResMut, macros::{Getters, Resource, system}};
 use cell::{App, Frame, Graphics, Plugin};
 use magician_vgpu::{Buffer, LoadOp, MutableBuffer, PassAttachment, PassTarget, Pipeline, ShaderSource, ShaderType, StoreOp};
 use mutual::CowData;
 
-use crate::{data::SDFMode, shader::{SDFRawBezier, SDFRawGlyph, SDFRawMetadata, SDFRawRectangle, SDFRawShaderData, SDFRawShape, SDFRawStyle}};
+use crate::{shader::{SDFRawBezier, SDFRawGlyph, SDFRawMetadata, SDFRawRectangle, SDFRawShaderData, SDFRawShape, SDFRawStyle}};
 
+pub mod chunked;
 pub mod data;
 pub mod shader;
+
+pub use chunked::*;
+pub use data::*;
 
 pub struct UIPlugin;
 impl Plugin for UIPlugin {
