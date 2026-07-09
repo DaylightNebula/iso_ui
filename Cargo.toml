@@ -19,8 +19,8 @@ base64 = "0.22.1"
 ahash = "0.8.12"
 wgpu = "29.0"
 anyhow = "1.0.103"
-ordered-float = "5.3.0"
-bytemuck = "1.25.0"
+ordered-float = { version = "5.3.0", features = ["bytemuck"] }
+bytemuck = { version = "1.25.0", features = ["derive"] }
 
 [dev-dependencies]
 gearbox = { path = "../gearbox" }

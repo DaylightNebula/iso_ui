@@ -2,7 +2,7 @@
 
 use anarchy::{Res, ResMut, macros::{Getters, Resource, system}};
 use cell::{App, Frame, Graphics, Plugin};
-use magician_vgpu::{Buffer, LoadOp, MutableBuffer, PassAttachment, PassTarget, Pipeline, ShaderSource, ShaderType, StoreOp};
+use magician_vgpu::{Buffer, LoadOp, MutableBuffer, PassAttachment, PassTarget, Pipeline, ShaderSource, ShaderType, StoreOp, WritableBuffer};
 use mutual::CowData;
 
 use crate::{shader::{SDFRawBezier, SDFRawGlyph, SDFRawMetadata, SDFRawRectangle, SDFRawShaderData, SDFRawShape, SDFRawStyle}};
@@ -28,10 +28,10 @@ pub struct UIRenderResources {
     pub bind_group: wgpu::BindGroup,
     pub metadata_buffer: MutableBuffer<SDFRawMetadata>,
     pub shapes_buffer: MutableBuffer<[SDFRawShape; 1000]>,
-    pub styles_buffer: MutableBuffer<[SDFRawStyle; 1000]>,
-    pub rectangles_buffer: MutableBuffer<[SDFRawRectangle; 1000]>,
-    pub bezier_buffer: MutableBuffer<[SDFRawBezier; 1000]>,
-    pub glyphs_buffer: MutableBuffer<[SDFRawGlyph; 1000]>
+    pub styles_buffer: ChunkedBuffer<SDFRawStyle>,
+    pub rectangles_buffer: ChunkedBuffer<SDFRawRectangle>,
+    pub bezier_buffer: ChunkedBuffer<SDFRawBezier>,
+    pub glyphs_buffer: ChunkedBuffer<SDFRawGlyph>
 }
 
 #[system(std::i32::MIN)]
@@ -64,50 +64,31 @@ fn init_resources(
     );
 
     // create styles buffer
-    let styles_buffer = MutableBuffer::new(
+    let styles_buffer = ChunkedBuffer::new(
         &*graphics, 
-        &[SDFRawStyle { 
-            primary_color: (1.0.into(), 1.0.into(), 1.0.into(), 1.0.into()), 
-            border_color: (1.0.into(), 1.0.into(), 1.0.into(), 1.0.into()), 
-            border_width: 1.0.into(), 
-            texture_ptr: std::u32::MAX, 
-            _padding: (0, 0) 
-        }; 1000], 
-        wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST
+        wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, 
+        1000
     );
 
     // create rectangles buffer
-    let rectangles_buffer = MutableBuffer::new(
-        &*graphics,
-        &[SDFRawRectangle {
-            radii: (1.0.into(), 1.0.into(), 1.0.into(), 1.0.into())
-        }; 1000],
-        wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST
+    let rectangles_buffer = ChunkedBuffer::new(
+        &*graphics, 
+        wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, 
+        1000
     );
 
     // create bezier's buffer
-    let bezier_buffer = MutableBuffer::new(
-        &*graphics,
-        &[SDFRawBezier {
-            a_off: (1.0.into(), 1.0.into()),
-            b_off: (1.0.into(), 1.0.into()),
-            c_off: (1.0.into(), 1.0.into()),
-            thickness: 1.0.into(),
-            _pad0: 0
-        }; 1000],
-        wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST
+    let bezier_buffer = ChunkedBuffer::new(
+        &*graphics, 
+        wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, 
+        1000
     );
 
     // create glyphs buffer
-    let glyphs_buffer = MutableBuffer::new(
+    let glyphs_buffer = ChunkedBuffer::new(
         &*graphics, 
-        &[SDFRawGlyph {
-            start_idx: 0,
-            length: 0,
-            _pad0: 0,
-            _pad1: 0
-        }; 1000], 
-        wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST
+        wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, 
+        1000
     );
 
     // create bind group layout
@@ -248,6 +229,32 @@ fn ui_render_pass(
     frame: ResMut<Frame>,
     resources: Res<UIRenderResources>
 ) {
+    let rectangle = resources.rectangles_buffer.get(
+        &*graphics, 
+        &[SDFRawRectangle { radii: (15.0.into(), 15.0.into(), 15.0.into(), 15.0.into()) }]
+    )?;
+    let style = resources.styles_buffer.get(
+        &*graphics, 
+        &[SDFRawStyle { 
+            primary_color: (1.0.into(), 0.0.into(), 0.0.into(), 1.0.into()), 
+            border_color: (1.0.into(), 1.0.into(), 1.0.into(), 1.0.into()), 
+            border_width: 5.0.into(), 
+            texture_ptr: std::u32::MAX, 
+            _padding: (0, 0) 
+        }]
+    )?; 
+    let mut shapes = Vec::with_capacity(1000);
+    shapes.push(SDFRawShape { 
+        center: (400.0.into(), 300.0.into()), 
+        dimensions: (50.0.into(), 50.0.into()), 
+        shape_ty: 2, 
+        looks_ptrs: pack_u32(*rectangle.start_idx() as u16, *style.start_idx() as u16), 
+        next_ptrs: std::u32::MAX, 
+        _pad0: 0 
+    });
+    shapes.resize(1000, SDFRawShape::default());
+    resources.shapes_buffer.write(&*graphics, &shapes.try_into().unwrap())?;
+
     let mut pass = frame.init_pass(
         &[
             PassAttachment {
@@ -261,4 +268,8 @@ fn ui_render_pass(
     pass.use_pipeline(resources.pipeline().get_ref());
     pass.bind_raw(0, resources.bind_group());
     pass.pass_mut().draw(0..3, 0..1);
+}
+
+fn pack_u32(val1: u16, val2: u16) -> u32 {
+    ((val1 as u32) << 16) | (val2 as u32)
 }

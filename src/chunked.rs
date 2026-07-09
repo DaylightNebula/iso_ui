@@ -102,6 +102,12 @@ pub struct ChunkedBufferInner<T: ChunkedBufferContent> {
     _phantom: PhantomData<T>
 }
 
+impl <T: ChunkedBufferContent> Buffer for ChunkedBuffer<T> {
+    type Type = T;
+    fn buffer(&self) -> &wgpu::Buffer { &self.0.buffer }
+    fn size(&self) -> u32 { self.0.max_size }
+}
+
 /// Outer handle to a chunk inside a `ChunkedBuffer`.
 /// The actual data is stored in `ChunkHandleInner` and
 /// this is used to track how much a chunk is being used.
@@ -188,12 +194,6 @@ pub struct ChunkHandleInner {
     start_idx: u32,
     size: u32,
     hash: u128
-}
-
-impl <T: ChunkedBufferContent> Buffer for ChunkedBufferInner<T> {
-    type Type = T;
-    fn buffer(&self) -> &wgpu::Buffer { &self.buffer }
-    fn size(&self) -> u32 { self.max_size }
 }
 
 fn hash128<T: ChunkedBufferContent>(data: &[T]) -> u128 {
