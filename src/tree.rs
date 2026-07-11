@@ -19,6 +19,10 @@ pub trait TreeBufferElement: 'static {
 
 /// The shader type of an object inside a buffer.
 pub trait TreeBufferContent: BufferContent + Default + Pod + 'static {
+    /// Extra inputs required when converting a CPU tree node into a GPU element.
+    ///
+    /// For UI shapes this is `crate::UIRenderResources`, which provides the chunked
+    /// buffers used to store per-shape detail.
     type ConvertInput;
 
     /// The input type of a tree.  This should be seperate from
@@ -58,6 +62,10 @@ pub trait TreeBufferContent: BufferContent + Default + Pod + 'static {
     fn set_child_ptr(&mut self, ptr: u32);
 }
 
+/// GPU uniform buffer that stores a flattened UI element tree.
+///
+/// The tree is written as a contiguous array of `T` values with sibling
+/// `next_ptr` links and parent `first_child_ptr` links wired up at upload time.
 #[derive(Getters)]
 pub struct TreeBuffer<T: TreeBufferContent> {
     buffer: wgpu::Buffer,

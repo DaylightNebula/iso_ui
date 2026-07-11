@@ -18,6 +18,7 @@ pub use chunked::*;
 pub use data::*;
 pub use tree::*;
 
+/// ECS plugin that registers GPU resources and a render pass for 2D SDF UI.
 pub struct UIPlugin;
 impl Plugin for UIPlugin {
     fn build(self, app: App) -> App {
@@ -26,6 +27,13 @@ impl Plugin for UIPlugin {
     }
 }
 
+/// GPU buffers, bind group, and pipeline used by the UI render pass.
+///
+/// `pipeline` is the SDF render pipeline, `bind_group` wires all uniform buffers
+/// to that pipeline, `metadata_buffer` holds per-frame screen size/time/mode,
+/// `shapes_buffer` stores the flattened element tree, and the remaining chunked
+/// buffers hold deduplicated styles, rectangle radii, bezier curves, and glyph
+/// headers referenced by shapes.
 #[derive(Resource, Getters)]
 pub struct UIRenderResources {
     pub pipeline: CowData<Pipeline>,
@@ -38,6 +46,7 @@ pub struct UIRenderResources {
     pub glyphs_buffer: ChunkedBuffer<SDFRawGlyph>
 }
 
+/// Allocates UI GPU buffers, bind group, and pipeline on render startup.
 #[system(std::i32::MIN)]
 fn init_resources(
     graphics: Res<Graphics>
@@ -220,6 +229,7 @@ fn init_resources(
     });
 }
 
+/// Flattens the UI tree, uploads it, and draws a fullscreen SDF pass over the frame.
 #[system(std::i32::MAX / 2)]
 fn ui_render_pass(
     graphics: Res<Graphics>,
@@ -243,6 +253,7 @@ fn ui_render_pass(
     pass.pass_mut().draw(0..3, 0..1);
 }
 
+/// Temporary demo tree used until a real UI tree source is wired in.
 fn test_tree() -> SDFElement {
     let mut children = LinkedList::new();
     children.push_back(SDFElement {

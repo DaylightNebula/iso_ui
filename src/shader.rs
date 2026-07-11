@@ -31,7 +31,12 @@ pub struct SDFRawMetadata {
 unsafe impl Pod for SDFRawMetadata {}
 unsafe impl Zeroable for SDFRawMetadata {}
 
-/// Raw data associated with the shaders implementation of SDFShape
+/// Raw data associated with the shaders implementation of SDFShape.
+///
+/// `shape_ty` is the shape type ID (`0` empty, `1` circle, `2` rectangle,
+/// `3` bezier, `4` glyph). `looks_ptrs` packs shape and style indices in the
+/// high and low 16 bits respectively. `next_ptrs` packs the next-sibling and
+/// first-child tree links in the high and low 16 bits respectively.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 #[repr(C)]
 pub struct SDFRawShape {
@@ -169,7 +174,10 @@ impl TreeBufferContent for SDFRawShape {
     }
 }
 
-/// Raw data associated with the shaders implementation of SDFStyle
+/// Raw data associated with the shaders implementation of SDFStyle.
+///
+/// `texture_ptr` is an index into a texture buffer, or `u32::MAX` when no
+/// texture is bound.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 #[repr(C)]
 pub struct SDFRawStyle {
@@ -222,7 +230,10 @@ unsafe impl Pod for SDFRawBezier {}
 unsafe impl Zeroable for SDFRawBezier {}
 impl ChunkedBufferContent for SDFRawBezier {}
 
-/// Raw data associated with the shaders implementation of SDFGlyph
+/// Raw data associated with the shaders implementation of SDFGlyph.
+///
+/// `start_idx` is the index of the first bezier curve in this glyph, and
+/// `length` is the number of curves that follow.
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq)]
 #[repr(C)]
 pub struct SDFRawGlyph {
@@ -251,6 +262,7 @@ fn pack_half(ptr: u32) -> u32 {
     }
 }
 
+/// Combine two 16-bit values into a single 32-bit packed field.
 fn pack_u32(val1: u16, val2: u16) -> u32 {
     ((val1 as u32) << 16) | (val2 as u32)
 }

@@ -118,6 +118,7 @@ impl <T: ChunkedBufferContent> ChunkedBuffer<T> {
     }
 }
 
+/// Shared backing state for a `ChunkedBuffer`.
 #[derive(Getters)]
 pub struct ChunkedBufferInner<T: ChunkedBufferContent> {
     buffer: wgpu::Buffer,
@@ -212,7 +213,11 @@ impl <T: ChunkedBufferContent> Drop for ChunkHandle<T> {
     }
 }
 
-/// Actual data belonging to a `ChunkHandle`
+/// Actual data belonging to a `ChunkHandle`.
+///
+/// `start_idx` is the index of the first of the chunk in the `ChunkedBuffer`,
+/// `size` is the number of contiguous elements reserved, and `hash` is the
+/// content hash used for deduplication.
 #[derive(Getters, Debug)]
 pub struct ChunkHandleInner {
     start_idx: u32,
@@ -220,6 +225,7 @@ pub struct ChunkHandleInner {
     hash: u128
 }
 
+/// Hash a slice of chunked-buffer elements for deduplication lookups.
 fn hash128<T: ChunkedBufferContent>(data: &[T]) -> u128 {
     let mut h1 = RandomState::with_seed(0x243F6A8885A308D3).build_hasher();
     let mut h2 = RandomState::with_seed(0xA4093822299F31D0).build_hasher();
