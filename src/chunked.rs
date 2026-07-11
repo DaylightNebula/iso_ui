@@ -7,7 +7,24 @@ use bytemuck::Pod;
 use magician_vgpu::{Buffer, BufferContent, VirtualGpu};
 use mutual::{DashMap, RelaxedMutex, SharedData};
 
-pub trait ChunkedBufferContent: BufferContent + Default + Hash + Pod + 'static {}
+/// All content that may be stored in a chunked buffer, must implement this trait
+/// to allow full interaction with the `ChunkedBuffer` system.
+#[allow(unused)]
+pub trait ChunkedBufferContent: BufferContent + Default + Hash + Pod + 'static {
+    /// Assign the chunk length of the chunk this item is assigned too.
+    fn set_chunk_len(&mut self, len: u32) {}
+
+    /// Assign the index of this item in the chunk it is assigned too.
+    fn set_idx(&mut self, idx: u32) {}
+
+    /// Assign the index of the next item in the chunk this item was 
+    /// assigned to, or none if this item is the last item in the chunk.
+    fn set_next_idx(&mut self, idx: Option<u32>) {}
+
+    /// Assign the index of the previous item in the chunk this item was 
+    /// assigned to, or none if this item is the first item in the chunk.
+    fn set_prev_idx(&mut self, idx: Option<u32>) {}
+}
 
 /// Allows chunks of data to be uploaded to a buffer without filling
 /// the whole buffer at once.  The type of data being stored must have
@@ -41,9 +58,9 @@ impl <T: ChunkedBufferContent> ChunkedBuffer<T> {
     /// its range will be returned to the unreserved memory list in this data structure,
     /// but the data will not be written to immeidately, but simply be overwritten as more
     /// data is added to this buffer.
-    pub fn get(&self, vgpu: &VirtualGpu, data: &[T]) -> anyhow::Result<ChunkHandle<T>> {
+    pub fn get(&self, vgpu: &VirtualGpu, mut data: Box<[T]>) -> anyhow::Result<ChunkHandle<T>> {
         // get chunk hash
-        let hash = hash128(data);
+        let hash = hash128(&data);
 
         // create lock now to avoid race with reserved list
         let mut unreserved = self.0.unreserved.lock_mut();
@@ -69,9 +86,19 @@ impl <T: ChunkedBufferContent> ChunkedBuffer<T> {
                     range.start += size;
                 }
 
+                // update chunk items with length, idx, next idx, and prev idx information
+                let mut chunk_idx = start;
+                data.iter_mut().for_each(|item| {
+                    item.set_chunk_len(size);
+                    item.set_idx(chunk_idx);
+                    item.set_prev_idx(if chunk_idx == 0 { None } else { Some(chunk_idx - 1) });
+                    item.set_next_idx(if chunk_idx == size - 1 { None } else { Some(chunk_idx + 1) });
+                    chunk_idx += 1;
+                });
+
                 // upload to buffer
                 let offset = std::mem::size_of::<T>() as u64 * start as u64;
-                let bytes = bytemuck::cast_slice(data);
+                let bytes = bytemuck::cast_slice(&data);
                 vgpu.queue().write_buffer(self.0.buffer(), offset, bytes);
 
                 // create new node

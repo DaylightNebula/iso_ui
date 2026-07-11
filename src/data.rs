@@ -4,7 +4,7 @@ use anarchy::macros::{Getters, GettersMut, Setters};
 use magician_vgpu::glam::*;
 use mutual::CowData;
 
-use crate::{ChunkHandle, TreeBufferElement, shader::{SDFRawBezier, SDFRawRectangle, SDFRawShape, SDFRawStyle}};
+use crate::{ChunkHandle, TreeBufferElement, shader::{SDFRawBezier, SDFRawGlyph, SDFRawRectangle, SDFRawShape, SDFRawStyle}};
 
 #[derive(Debug, Getters, Setters, GettersMut, Clone, PartialEq)]
 pub struct SDFMetadata {
@@ -46,7 +46,7 @@ pub enum SDFRawStyleHandle {
     Empty,
     Rectangle(ChunkHandle<SDFRawRectangle>),
     Curve(ChunkHandle<SDFRawBezier>),
-    Glyph(u32)
+    Glyph(ChunkHandle<SDFRawBezier>, ChunkHandle<SDFRawGlyph>)
 }
 
 impl SDFRawStyleHandle {
@@ -55,7 +55,7 @@ impl SDFRawStyleHandle {
             SDFRawStyleHandle::Empty => std::u32::MAX,
             SDFRawStyleHandle::Rectangle(chunk_handle) => *chunk_handle.start_idx(),
             SDFRawStyleHandle::Curve(chunk_handle) => *chunk_handle.start_idx(),
-            SDFRawStyleHandle::Glyph(ptr) => *ptr
+            SDFRawStyleHandle::Glyph(_, ptr) => *ptr.start_idx()
         }
     }
 }

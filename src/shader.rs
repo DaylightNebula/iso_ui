@@ -78,40 +78,71 @@ impl TreeBufferContent for SDFRawShape {
             SDFShape::Rectangle(sdfrectangle) => 
                 SDFRawStyleHandle::Rectangle(input.rectangles_buffer().get(
                     vgpu, 
-                    &[SDFRawRectangle { 
-                        radii: (
-                            sdfrectangle.radii.x.into(),
-                            sdfrectangle.radii.y.into(),
-                            sdfrectangle.radii.z.into(),
-                            sdfrectangle.radii.w.into()
-                        )
-                    }]
+                    Box::new([
+                        SDFRawRectangle { 
+                            radii: (
+                                sdfrectangle.radii.x.into(),
+                                sdfrectangle.radii.y.into(),
+                                sdfrectangle.radii.z.into(),
+                                sdfrectangle.radii.w.into()
+                            )
+                        }
+                    ])
                 )?),
             SDFShape::Bezier(sdfcurve) => 
                 SDFRawStyleHandle::Curve(input.bezier_buffer.get(
                     vgpu, 
-                    &[SDFRawBezier {
+                    Box::new([
+                        SDFRawBezier {
+                            a_off: (sdfcurve.a_offset.x.into(), sdfcurve.a_offset.y.into()),
+                            b_off: (sdfcurve.b_offset.x.into(), sdfcurve.b_offset.y.into()),
+                            c_off: (sdfcurve.c_offset.x.into(), sdfcurve.c_offset.y.into()),
+                            thickness: sdfcurve.thickness.into(),
+                            _pad0: 0
+                        }
+                    ])
+                )?),
+            SDFShape::Glyph(sdfcurves) => {
+                // create curve chunk and handle
+                let chunk: Box<[SDFRawBezier]> = sdfcurves.iter()
+                    .map(|sdfcurve| SDFRawBezier {
                         a_off: (sdfcurve.a_offset.x.into(), sdfcurve.a_offset.y.into()),
                         b_off: (sdfcurve.b_offset.x.into(), sdfcurve.b_offset.y.into()),
                         c_off: (sdfcurve.c_offset.x.into(), sdfcurve.c_offset.y.into()),
                         thickness: sdfcurve.thickness.into(),
                         _pad0: 0
-                    }]
-                )?),
-            SDFShape::Glyph(_sdfcurves) => 
-                todo!(),
+                    }).collect();
+                let chunk = input.bezier_buffer.get(vgpu, chunk)?;
+
+                // create glyph handle
+                let glyph = input.glyphs_buffer.get(
+                    vgpu, 
+                    Box::new([
+                        SDFRawGlyph {
+                            start_idx: *chunk.start_idx(),
+                            length: *chunk.size(),
+                            _pad0: 0,
+                            _pad1: 0
+                        }
+                    ])
+                )?;
+
+                SDFRawStyleHandle::Glyph(chunk, glyph)
+            },
             _ => SDFRawStyleHandle::Empty
         };
 
         let style_ptr = input.styles_buffer().get(
             vgpu, 
-            &[SDFRawStyle {
-                primary_color: (rust.style.primary_color.x.into(), rust.style.primary_color.y.into(), rust.style.primary_color.z.into(), rust.style.primary_color.w.into()),
-                border_color: (rust.style.border_color.x.into(), rust.style.border_color.y.into(), rust.style.border_color.z.into(), rust.style.border_color.w.into()),
-                border_width: rust.style.border_width.into(),
-                texture_ptr: std::u32::MAX,
-                _padding: (0, 0)
-            }]
+            Box::new([
+                SDFRawStyle {
+                    primary_color: (rust.style.primary_color.x.into(), rust.style.primary_color.y.into(), rust.style.primary_color.z.into(), rust.style.primary_color.w.into()),
+                    border_color: (rust.style.border_color.x.into(), rust.style.border_color.y.into(), rust.style.border_color.z.into(), rust.style.border_color.w.into()),
+                    border_width: rust.style.border_width.into(),
+                    texture_ptr: std::u32::MAX,
+                    _padding: (0, 0)
+                }
+            ])
         )?;
 
         let looks_ptrs = pack_u32(
