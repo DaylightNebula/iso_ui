@@ -2,6 +2,9 @@ use std::collections::LinkedList;
 
 use anarchy::macros::{Getters, GettersMut, Setters};
 use magician_vgpu::glam::*;
+use mutual::CowData;
+
+use crate::{ChunkHandle, TreeBufferElement, shader::{SDFRawRectangle, SDFRawShape, SDFRawStyle}};
 
 #[derive(Debug, Getters, Setters, GettersMut, Clone, PartialEq)]
 pub struct SDFMetadata {
@@ -19,13 +22,22 @@ pub enum SDFMode {
     HashColor = 1
 }
 
-#[derive(Debug, Getters, Setters, GettersMut, Clone, PartialEq)]
+#[derive(Default, Getters, Setters, GettersMut, Clone)]
 pub struct SDFElement {
     pub center: Vec2,
     pub dimensions: Vec2,
     pub style: SDFStyle,
     pub shape: SDFShape,
-    pub children: LinkedList<SDFElement>
+    pub children: LinkedList<SDFElement>,
+    pub handles: CowData<(ChunkHandle<SDFRawStyle>, Option<ChunkHandle<SDFRawRectangle>>)>
+}
+
+impl TreeBufferElement for SDFElement {
+    type OutputType = SDFRawShape;
+
+    fn children(&self) -> impl Iterator<Item = &Self> {
+        self.children.iter()
+    }
 }
 
 #[derive(Debug, Getters, Setters, GettersMut, Clone, PartialEq)]
@@ -33,7 +45,16 @@ pub struct SDFStyle {
     pub primary_color: Vec4,
     pub border_color: Vec4,
     pub border_width: f32,
-    // pub texture: Option<RenderAssetHandle>
+}
+
+impl Default for SDFStyle {
+    fn default() -> Self {
+        Self {
+            primary_color: Vec4::ONE,
+            border_color: Vec4::ZERO,
+            border_width: 5.0
+        }
+    }
 }
 
 #[derive(Default, Debug, Clone, PartialEq)]

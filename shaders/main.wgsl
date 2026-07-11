@@ -185,14 +185,12 @@ fn walk_shape_tree(parent: SDFShape, point: vec2<f32>) -> vec4<f32> {
 }
 
 fn blend_shape(
-    in_color: vec4<f32>,
+    color: vec4<f32>,
     point: vec2<f32>,
     shape: SDFShape,
     style: SDFStyle,
     d: f32
 ) -> vec4<f32> {
-    var color = in_color;
-
     // calculate primary color with texture
     var primary_color = style.primary_color;
     // if style.texture_ptr != 0xFFFFFFFFu {
@@ -201,9 +199,15 @@ fn blend_shape(
     //     primary_color = tex_color * primary_color;
     // }
 
+    // if style.border_width > 5.0 { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
+    // else { return vec4<f32>(1.0, 1.0, 1.0, 1.0); }
+
     // calculate local color with borders taken into account
     let border_mult = clamp(-d - style.border_width, 0.0, 1.0);
+    // return vec4<f32>(vec3<f32>(border_mult), 1.0);
     var local_color = ((border_mult * primary_color) + ((1.0 - border_mult) * style.border_color)) * clamp(-d, 0.0, 1.0);
+    // return local_color;
+    // return style.border_color * (1.0 - border_mult);
 
     // handle alpha edge cases
     if local_color.a >= 1.0 { return local_color; }

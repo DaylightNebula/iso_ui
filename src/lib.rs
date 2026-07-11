@@ -1,8 +1,10 @@
 #![feature(linked_list_cursors)]
 
+use std::collections::LinkedList;
+
 use anarchy::{Res, ResMut, macros::{Getters, Resource, system}};
 use cell::{App, Frame, Graphics, Plugin};
-use magician_vgpu::{Buffer, LoadOp, MutableBuffer, PassAttachment, PassTarget, Pipeline, ShaderSource, ShaderType, StoreOp, WritableBuffer};
+use magician_vgpu::{Buffer, LoadOp, MutableBuffer, PassAttachment, PassTarget, Pipeline, ShaderSource, ShaderType, StoreOp, glam::{Vec2, Vec4}};
 use mutual::CowData;
 
 use crate::{shader::{SDFRawBezier, SDFRawGlyph, SDFRawMetadata, SDFRawRectangle, SDFRawShaderData, SDFRawShape, SDFRawStyle}};
@@ -10,9 +12,11 @@ use crate::{shader::{SDFRawBezier, SDFRawGlyph, SDFRawMetadata, SDFRawRectangle,
 pub mod chunked;
 pub mod data;
 pub mod shader;
+pub mod tree;
 
 pub use chunked::*;
 pub use data::*;
+pub use tree::*;
 
 pub struct UIPlugin;
 impl Plugin for UIPlugin {
@@ -27,7 +31,7 @@ pub struct UIRenderResources {
     pub pipeline: CowData<Pipeline>,
     pub bind_group: wgpu::BindGroup,
     pub metadata_buffer: MutableBuffer<SDFRawMetadata>,
-    pub shapes_buffer: MutableBuffer<[SDFRawShape; 1000]>,
+    pub shapes_buffer: TreeBuffer<SDFRawShape>,
     pub styles_buffer: ChunkedBuffer<SDFRawStyle>,
     pub rectangles_buffer: ChunkedBuffer<SDFRawRectangle>,
     pub bezier_buffer: ChunkedBuffer<SDFRawBezier>,
@@ -50,17 +54,10 @@ fn init_resources(
     );
 
     // create shapes buffer
-    let shapes_buffer = MutableBuffer::new(
-        &*graphics, 
-        &[SDFRawShape { 
-            center: (1.0.into(), 1.0.into()), 
-            dimensions: (1.0.into(), 1.0.into()), 
-            shape_ty: 0, 
-            looks_ptrs: std::u32::MAX, 
-            next_ptrs: std::u32::MAX, 
-            _pad0: 0 
-        }; 1000], 
-        wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST
+    let shapes_buffer = TreeBuffer::new(
+        &*graphics,  
+        wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, 
+        1000
     );
 
     // create styles buffer
@@ -229,31 +226,7 @@ fn ui_render_pass(
     frame: ResMut<Frame>,
     resources: Res<UIRenderResources>
 ) {
-    let rectangle = resources.rectangles_buffer.get(
-        &*graphics, 
-        &[SDFRawRectangle { radii: (15.0.into(), 15.0.into(), 15.0.into(), 15.0.into()) }]
-    )?;
-    let style = resources.styles_buffer.get(
-        &*graphics, 
-        &[SDFRawStyle { 
-            primary_color: (1.0.into(), 0.0.into(), 0.0.into(), 1.0.into()), 
-            border_color: (1.0.into(), 1.0.into(), 1.0.into(), 1.0.into()), 
-            border_width: 5.0.into(), 
-            texture_ptr: std::u32::MAX, 
-            _padding: (0, 0) 
-        }]
-    )?; 
-    let mut shapes = Vec::with_capacity(1000);
-    shapes.push(SDFRawShape { 
-        center: (400.0.into(), 300.0.into()), 
-        dimensions: (50.0.into(), 50.0.into()), 
-        shape_ty: 2, 
-        looks_ptrs: pack_u32(*rectangle.start_idx() as u16, *style.start_idx() as u16), 
-        next_ptrs: std::u32::MAX, 
-        _pad0: 0 
-    });
-    shapes.resize(1000, SDFRawShape::default());
-    resources.shapes_buffer.write(&*graphics, &shapes.try_into().unwrap())?;
+    resources.shapes_buffer.update(&*graphics, &test_tree(), &resources)?;
 
     let mut pass = frame.init_pass(
         &[
@@ -270,6 +243,32 @@ fn ui_render_pass(
     pass.pass_mut().draw(0..3, 0..1);
 }
 
-fn pack_u32(val1: u16, val2: u16) -> u32 {
-    ((val1 as u32) << 16) | (val2 as u32)
+fn test_tree() -> SDFElement {
+    let mut children = LinkedList::new();
+    children.push_back(SDFElement {
+        center: Vec2::new(400.0, 250.0), 
+        dimensions: Vec2::new(50.0, 75.0),
+        style: SDFStyle { 
+            primary_color: Vec4::new(0.0, 1.0, 0.0, 1.0), 
+            border_color: Vec4::ONE, 
+            border_width: 0.0
+        }, 
+        shape: SDFShape::Rectangle(SDFRectangle { radii: Vec4::new(15.0, 15.0, 15.0, 15.0) }), 
+        children: LinkedList::new(),
+        ..Default::default()
+    });
+
+    SDFElement { 
+        center: Vec2::new(400.0, 300.0), 
+        dimensions: Vec2::new(200.0, 200.0),
+        style: SDFStyle { 
+            primary_color: Vec4::new(1.0, 0.0, 0.0, 1.0), 
+            border_color: Vec4::new(0.0, 0.0, 0.0, 1.0), 
+            border_width: 3.0
+        }, 
+        shape: SDFShape::Rectangle(SDFRectangle { radii: Vec4::new(15.0, 15.0, 15.0, 15.0) }), 
+        // shape: SDFShape::Empty,
+        children: children,
+        ..Default::default()
+    }
 }

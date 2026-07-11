@@ -54,8 +54,6 @@ impl <T: ChunkedBufferContent> ChunkedBuffer<T> {
             return Ok(ChunkHandle { inner: prev.clone(), buffer: self.0.clone() });
         }
 
-        println!("Creating new handle for {}", hash);
-
         // find and take an empty slot 
         let mut cursor = unreserved.cursor_front_mut();
         let size = data.len() as u32;
@@ -140,7 +138,6 @@ impl <T: ChunkedBufferContent> Drop for ChunkHandle<T> {
         if Arc::strong_count(&self.inner) > 2 { return }
 
         // remove from reserved map
-        println!("Dropping handle {:?}", self.inner);
         if self.buffer.reserved.remove(&self.hash).is_none() { return }
 
         // get cursor to return memory to unreserved memory
