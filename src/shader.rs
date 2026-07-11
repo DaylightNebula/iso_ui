@@ -2,7 +2,7 @@ use bytemuck::{Pod, Zeroable};
 use magician_vgpu::VirtualGpu;
 use ordered_float::OrderedFloat;
 
-use crate::{ChunkedBufferContent, SDFElement, SDFShape, TreeBufferContent, UIRenderResources};
+use crate::{ChunkedBufferContent, SDFElement, SDFRawStyleHandle, SDFShape, TreeBufferContent, UIRenderResources};
 
 const HALF_MASK: u32 = 0xFFFF;
 const HALF_NONE: u32 = 0xFFFF;
@@ -63,7 +63,7 @@ impl TreeBufferContent for SDFRawShape {
     type ConvertInput = UIRenderResources;
     type InputType = SDFElement;
 
-    fn new_gpu_type(vgpu: &VirtualGpu, rust: &Self::InputType, input: &Self::ConvertInput, next_ptr: u32, first_child_ptr: u32) -> Self {
+    fn new_gpu_type(vgpu: &VirtualGpu, rust: &Self::InputType, input: &Self::ConvertInput, next_ptr: u32, first_child_ptr: u32) -> anyhow::Result<Self> {
         let shape_ty = match &rust.shape {
             SDFShape::Empty => 0,
             SDFShape::Circle => 1,
@@ -75,20 +75,32 @@ impl TreeBufferContent for SDFRawShape {
         // todo fix dropping
 
         let shape_ptr = match &rust.shape {
-            SDFShape::Rectangle(sdfrectangle) => input.rectangles_buffer().get(
-                vgpu, 
-                &[SDFRawRectangle { 
-                    radii: (
-                        sdfrectangle.radii.x.into(),
-                        sdfrectangle.radii.y.into(),
-                        sdfrectangle.radii.z.into(),
-                        sdfrectangle.radii.w.into()
-                    )
-                }]
-            ).ok(),
-            SDFShape::Bezier(_sdfcurve) => todo!(),
-            SDFShape::Glyph(_sdfcurves) => todo!(),
-            _ => None
+            SDFShape::Rectangle(sdfrectangle) => 
+                SDFRawStyleHandle::Rectangle(input.rectangles_buffer().get(
+                    vgpu, 
+                    &[SDFRawRectangle { 
+                        radii: (
+                            sdfrectangle.radii.x.into(),
+                            sdfrectangle.radii.y.into(),
+                            sdfrectangle.radii.z.into(),
+                            sdfrectangle.radii.w.into()
+                        )
+                    }]
+                )?),
+            SDFShape::Bezier(sdfcurve) => 
+                SDFRawStyleHandle::Curve(input.bezier_buffer.get(
+                    vgpu, 
+                    &[SDFRawBezier {
+                        a_off: (sdfcurve.a_offset.x.into(), sdfcurve.a_offset.y.into()),
+                        b_off: (sdfcurve.b_offset.x.into(), sdfcurve.b_offset.y.into()),
+                        c_off: (sdfcurve.c_offset.x.into(), sdfcurve.c_offset.y.into()),
+                        thickness: sdfcurve.thickness.into(),
+                        _pad0: 0
+                    }]
+                )?),
+            SDFShape::Glyph(_sdfcurves) => 
+                todo!(),
+            _ => SDFRawStyleHandle::Empty
         };
 
         let style_ptr = input.styles_buffer().get(
@@ -100,21 +112,21 @@ impl TreeBufferContent for SDFRawShape {
                 texture_ptr: std::u32::MAX,
                 _padding: (0, 0)
             }]
-        ).unwrap();
+        )?;
 
         let looks_ptrs = pack_u32(
-            shape_ptr.as_ref().map(|a| *a.start_idx() as u16).unwrap_or(std::u16::MAX),
+            shape_ptr.handle_ptr() as u16,
             *style_ptr.start_idx() as u16
         );
         rust.handles.set((style_ptr, shape_ptr));
 
-        Self {
+        Ok(Self {
             center: (rust.center.x.into(), rust.center.y.into()),
             dimensions: (rust.dimensions.x.into(), rust.dimensions.y.into()),
             shape_ty, looks_ptrs,
             next_ptrs: (pack_half(next_ptr) << 16) | pack_half(first_child_ptr),
             _pad0: 0,
-        }
+        })
     }
 
     fn set_next_ptr(&mut self, ptr: u32) {

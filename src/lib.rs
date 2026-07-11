@@ -247,13 +247,18 @@ fn test_tree() -> SDFElement {
     let mut children = LinkedList::new();
     children.push_back(SDFElement {
         center: Vec2::new(400.0, 250.0), 
-        dimensions: Vec2::new(50.0, 75.0),
+        dimensions: Vec2::new(150.0, 150.0),
         style: SDFStyle { 
             primary_color: Vec4::new(0.0, 1.0, 0.0, 1.0), 
-            border_color: Vec4::ONE, 
+            border_color: Vec4::ZERO, 
             border_width: 0.0
         }, 
-        shape: SDFShape::Rectangle(SDFRectangle { radii: Vec4::new(15.0, 15.0, 15.0, 15.0) }), 
+        shape: SDFShape::Bezier(SDFCurve { 
+            a_offset: Vec2::new(-50.0, 0.0), 
+            b_offset: Vec2::new(0.0, 50.0), 
+            c_offset: Vec2::new(50.0, 0.0), 
+            thickness: 3.0 
+        }), 
         children: LinkedList::new(),
         ..Default::default()
     });

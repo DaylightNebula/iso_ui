@@ -4,7 +4,7 @@ use anarchy::macros::{Getters, GettersMut, Setters};
 use magician_vgpu::glam::*;
 use mutual::CowData;
 
-use crate::{ChunkHandle, TreeBufferElement, shader::{SDFRawRectangle, SDFRawShape, SDFRawStyle}};
+use crate::{ChunkHandle, TreeBufferElement, shader::{SDFRawBezier, SDFRawRectangle, SDFRawShape, SDFRawStyle}};
 
 #[derive(Debug, Getters, Setters, GettersMut, Clone, PartialEq)]
 pub struct SDFMetadata {
@@ -29,7 +29,7 @@ pub struct SDFElement {
     pub style: SDFStyle,
     pub shape: SDFShape,
     pub children: LinkedList<SDFElement>,
-    pub handles: CowData<(ChunkHandle<SDFRawStyle>, Option<ChunkHandle<SDFRawRectangle>>)>
+    pub handles: CowData<(ChunkHandle<SDFRawStyle>, SDFRawStyleHandle)>
 }
 
 impl TreeBufferElement for SDFElement {
@@ -37,6 +37,26 @@ impl TreeBufferElement for SDFElement {
 
     fn children(&self) -> impl Iterator<Item = &Self> {
         self.children.iter()
+    }
+}
+
+#[derive(Clone, Default)]
+pub enum SDFRawStyleHandle {
+    #[default]
+    Empty,
+    Rectangle(ChunkHandle<SDFRawRectangle>),
+    Curve(ChunkHandle<SDFRawBezier>),
+    Glyph(u32)
+}
+
+impl SDFRawStyleHandle {
+    pub fn handle_ptr(&self) -> u32 {
+        match &self {
+            SDFRawStyleHandle::Empty => std::u32::MAX,
+            SDFRawStyleHandle::Rectangle(chunk_handle) => *chunk_handle.start_idx(),
+            SDFRawStyleHandle::Curve(chunk_handle) => *chunk_handle.start_idx(),
+            SDFRawStyleHandle::Glyph(ptr) => *ptr
+        }
     }
 }
 

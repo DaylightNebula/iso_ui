@@ -32,7 +32,13 @@ pub trait TreeBufferContent: BufferContent + Default + Pod + 'static {
     /// 
     /// If u32::MAX is given for either pointer, than the
     /// value it points to does not exist.
-    fn new_gpu_type(vgpu: &VirtualGpu, rust: &Self::InputType, input: &Self::ConvertInput, next_ptr: u32, first_child_ptr: u32) -> Self;
+    fn new_gpu_type(
+        vgpu: &VirtualGpu, 
+        rust: &Self::InputType, 
+        input: &Self::ConvertInput, 
+        next_ptr: u32, 
+        first_child_ptr: u32
+    ) -> anyhow::Result<Self>;
 
     /// Set the next pointer in this object to a given index.
     /// The next pointer is an index in the array to an element
@@ -85,7 +91,7 @@ impl<T: TreeBufferContent> TreeBuffer<T> {
 
     /// Update this tree buffer from the given tree_root.
     pub fn update(&self, vgpu: &VirtualGpu, tree_root: &T::InputType, input: &T::ConvertInput) -> anyhow::Result<()> {
-        let data = flatten_tree::<T>(vgpu, tree_root, input);
+        let data = flatten_tree::<T>(vgpu, tree_root, input)?;
 
         ensure!(
             data.len() <= self.max_size,
@@ -104,8 +110,8 @@ impl<T: TreeBufferContent> TreeBuffer<T> {
 /// Flatten a rust-side tree into GPU-layout elements, in the order they'll
 /// be written to the buffer. The root is always index 0. Sibling `next_ptr`
 /// chains and parent `first_child_ptr`s are wired up as we go.
-fn flatten_tree<T: TreeBufferContent>(vgpu: &VirtualGpu, root: &T::InputType, input: &T::ConvertInput) -> Vec<T> {
-    let mut output: Vec<T> = vec![T::new_gpu_type(vgpu, root, input, std::u32::MAX, std::u32::MAX)];
+fn flatten_tree<T: TreeBufferContent>(vgpu: &VirtualGpu, root: &T::InputType, input: &T::ConvertInput) -> anyhow::Result<Vec<T>> {
+    let mut output: Vec<T> = vec![T::new_gpu_type(vgpu, root, input, std::u32::MAX, std::u32::MAX)?];
 
     // (input node, its index in `output`)
     let mut queue: VecDeque<(&T::InputType, usize)> = VecDeque::new();
@@ -123,7 +129,7 @@ fn flatten_tree<T: TreeBufferContent>(vgpu: &VirtualGpu, root: &T::InputType, in
         let mut prev_idx: Option<usize> = None;
         for child in children {
             let child_idx = output.len();
-            output.push(T::new_gpu_type(vgpu, child, input, std::u32::MAX, std::u32::MAX));
+            output.push(T::new_gpu_type(vgpu, child, input, std::u32::MAX, std::u32::MAX)?);
 
             if let Some(p) = prev_idx {
                 output[p].set_next_ptr(child_idx as u32);
@@ -134,5 +140,5 @@ fn flatten_tree<T: TreeBufferContent>(vgpu: &VirtualGpu, root: &T::InputType, in
         }
     }
 
-    output
+    Ok(output)
 }
