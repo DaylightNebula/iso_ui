@@ -9,14 +9,12 @@ use mutual::CowData;
 
 use crate::{shader::{SDFRawBezier, SDFRawGlyph, SDFRawMetadata, SDFRawRectangle, SDFRawShaderData, SDFRawShape, SDFRawStyle}};
 
-pub mod chunked;
+pub mod buffers;
 pub mod data;
 pub mod shader;
-pub mod tree;
 
-pub use chunked::*;
+pub use buffers::*;
 pub use data::*;
-pub use tree::*;
 
 /// ECS plugin that registers GPU resources and a render pass for 2D SDF UI.
 pub struct UIPlugin;
