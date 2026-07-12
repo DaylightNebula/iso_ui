@@ -1,16 +1,13 @@
-use std::time::Duration;
-
 use magician_vgpu::glam::Vec2;
-use ordered_float::OrderedFloat;
 
 use crate::SDFShape;
 
 mod outline;
 
 /// A font that creates characters rendered as SDFElement's.
+#[derive(Debug)]
 pub struct SDFFont {
-    face: ttf_parser::Face<'static>,
-    cache: expiringmap::ExpiringMap<(char, OrderedFloat<f32>), SDFCharEntry>
+    face: ttf_parser::Face<'static>
 }
 
 /// A string of `SDFCharEntry`s meant to represent a string in SDFs.
@@ -31,8 +28,7 @@ impl SDFFont {
     /// Create a new font from the bytes of a TTF file.
     pub fn new(bytes: &'static [u8]) -> anyhow::Result<Self> {
         Ok(Self {
-            face: ttf_parser::Face::parse(bytes, 0)?,
-            cache: expiringmap::ExpiringMap::default()
+            face: ttf_parser::Face::parse(bytes, 0)?
         })
     }
 
@@ -55,7 +51,7 @@ impl SDFFont {
     /// Render a string to a `SDFGlyphString` for drawing a string
     /// via SDFs.
     pub fn render_glyph_line(
-        &mut self, 
+        &self, 
         string: &str, 
         font_size: f32
     ) -> anyhow::Result<SDFGlyphString> {
@@ -69,11 +65,6 @@ impl SDFFont {
             .filter_map(|ch| {
                 let Some(id) = self.face.glyph_index(ch) 
                     else { return None; };
-
-                // check cache and return from there first
-                let cache_key: (char, OrderedFloat<f32>) = (ch, font_size.into());
-                let cached = self.cache.get(&cache_key);
-                if cached.is_some() { return Some(cached.cloned().unwrap()) }
 
                 // calculate character metadata and build outline
                 let mut outline = outline::GlyphBuilder::default();
@@ -104,7 +95,6 @@ impl SDFFont {
                     };
 
                 // cache and return char_entry
-                self.cache.insert(cache_key, char_entry.clone(), Duration::from_secs_f32(1.0));
                 return Some(char_entry);
             })
             .collect::<Vec<_>>();

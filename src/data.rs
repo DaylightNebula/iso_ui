@@ -1,5 +1,3 @@
-use std::collections::LinkedList;
-
 use anarchy::macros::{Getters, GettersMut, Setters};
 use magician_vgpu::glam::*;
 use mutual::CowData;
@@ -43,7 +41,7 @@ pub struct SDFElement {
     pub dimensions: Vec2,
     pub style: SDFStyle,
     pub shape: SDFShape,
-    pub children: LinkedList<SDFElement>,
+    pub children: Vec<SDFElement>,
     pub handles: CowData<(ChunkHandle<SDFRawStyle>, SDFRawStyleHandle)>
 }
 

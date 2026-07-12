@@ -1,10 +1,8 @@
 #![feature(linked_list_cursors)]
 
-use std::collections::LinkedList;
-
-use anarchy::{Res, ResMut, macros::{Getters, Resource, system}};
+use anarchy::{Query, Res, ResMut, macros::{Getters, Resource, system}};
 use cell::{App, Frame, Graphics, Plugin};
-use magician_vgpu::{Buffer, LoadOp, MutableBuffer, PassAttachment, PassTarget, Pipeline, ShaderSource, ShaderType, StoreOp, glam::{Vec2, Vec4}};
+use magician_vgpu::{Buffer, LoadOp, MutableBuffer, PassAttachment, PassTarget, Pipeline, ShaderSource, ShaderType, StoreOp, glam::Vec2};
 use mutual::CowData;
 
 use crate::{shader::{SDFRawBezier, SDFRawGlyph, SDFRawMetadata, SDFRawRectangle, SDFRawShaderData, SDFRawShape, SDFRawStyle}};
@@ -12,10 +10,12 @@ use crate::{shader::{SDFRawBezier, SDFRawGlyph, SDFRawMetadata, SDFRawRectangle,
 pub mod buffers;
 pub mod data;
 pub mod fonts;
+pub mod nodes;
 pub mod shader;
 
 pub use buffers::*;
 pub use data::*;
+pub use nodes::*;
 pub use fonts::*;
 
 /// ECS plugin that registers GPU resources and a render pass for 2D SDF UI.
@@ -236,8 +236,25 @@ fn ui_render_pass(
     frame: ResMut<Frame>,
     resources: Res<UIRenderResources>
 ) {
-    resources.shapes_buffer.update(&*graphics, &test_tree()?, &resources)?;
+    // create UI elements
+    let nodes = Query::<&UINodeSDFRoot>::new(world.database())
+        .as_iter()
+        .map(|a| a.clone())
+        .collect::<Vec<_>>();
+    let elements = layout_ui_nodes(&nodes, [800.0, 600.0]);
 
+    // create root element
+    let root = SDFElement { 
+        center: Vec2::new(400.0, 300.0), 
+        dimensions: Vec2::new(800.0, 600.0), 
+        children: elements, 
+        ..Default::default() 
+    };
+
+    // upload new UI tree
+    resources.shapes_buffer.update(&*graphics, &root, &resources)?;
+
+    // setup render pass
     let mut pass = frame.init_pass(
         &[
             PassAttachment {
@@ -248,47 +265,48 @@ fn ui_render_pass(
         ], None
     );
 
+    // draw to the screen
     pass.use_pipeline(resources.pipeline().get_ref());
     pass.bind_raw(0, resources.bind_group());
     pass.pass_mut().draw(0..3, 0..1);
 }
 
-/// Temporary demo tree used until a real UI tree source is wired in.
-fn test_tree() -> anyhow::Result<SDFElement> {
-    let mut children = LinkedList::new();
+// /// Temporary demo tree used until a real UI tree source is wired in.
+// fn test_tree() -> anyhow::Result<SDFElement> {
+//     let mut children = LinkedList::new();
     
-    let font_data = include_bytes!("../examples/LiberationSans-Regular.ttf");
-    let mut font = SDFFont::new(font_data)?;
-    let string = font.render_glyph_line("Hello World!@#%^&", 18.0)?;
-    let mut cur_x = (string.dimensions.x / -2.0) + 390.0;
-    string.chars.into_iter().for_each(|entry| {
-        if let Some(shape) = entry.shape {
-            cur_x += entry.advance;
-            children.push_back(SDFElement {
-                center: Vec2::new(cur_x - (entry.advance / 2.0), 300.0),
-                dimensions: entry.dimensions,
-                style: SDFStyle { primary_color: Vec4::ONE, border_color: Vec4::ONE, border_width: 0.0 },
-                shape,
-                children: LinkedList::new(),
-                ..Default::default()
-            });
-        } else {
-            cur_x += entry.advance;
-            // None
-        }
-    });
+//     let font_data = include_bytes!("../examples/LiberationSans-Regular.ttf");
+//     let mut font = SDFFont::new(font_data)?;
+//     let string = font.render_glyph_line("Hello World!@#%^&", 18.0)?;
+//     let mut cur_x = (string.dimensions.x / -2.0) + 390.0;
+//     string.chars.into_iter().for_each(|entry| {
+//         if let Some(shape) = entry.shape {
+//             cur_x += entry.advance;
+//             children.push_back(SDFElement {
+//                 center: Vec2::new(cur_x - (entry.advance / 2.0), 300.0),
+//                 dimensions: entry.dimensions,
+//                 style: SDFStyle { primary_color: Vec4::ONE, border_color: Vec4::ONE, border_width: 0.0 },
+//                 shape,
+//                 children: LinkedList::new(),
+//                 ..Default::default()
+//             });
+//         } else {
+//             cur_x += entry.advance;
+//             // None
+//         }
+//     });
 
-    Ok(SDFElement { 
-        center: Vec2::new(400.0, 300.0), 
-        dimensions: Vec2::new(200.0, 200.0),
-        style: SDFStyle { 
-            primary_color: Vec4::new(1.0, 0.0, 0.0, 1.0), 
-            border_color: Vec4::new(0.0, 0.0, 0.0, 1.0), 
-            border_width: 3.0
-        }, 
-        shape: SDFShape::Rectangle(SDFRectangle { radii: Vec4::new(15.0, 15.0, 15.0, 15.0) }), 
-        // shape: SDFShape::Empty,
-        children: children,
-        ..Default::default()
-    })
-}
+//     Ok(SDFElement { 
+//         center: Vec2::new(400.0, 300.0), 
+//         dimensions: Vec2::new(200.0, 200.0),
+//         style: SDFStyle { 
+//             primary_color: Vec4::new(1.0, 0.0, 0.0, 1.0), 
+//             border_color: Vec4::new(0.0, 0.0, 0.0, 1.0), 
+//             border_width: 3.0
+//         }, 
+//         shape: SDFShape::Rectangle(SDFRectangle { radii: Vec4::new(15.0, 15.0, 15.0, 15.0) }), 
+//         // shape: SDFShape::Empty,
+//         children: children,
+//         ..Default::default()
+//     })
+// }
