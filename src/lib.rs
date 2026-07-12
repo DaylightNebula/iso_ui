@@ -11,10 +11,12 @@ use crate::{shader::{SDFRawBezier, SDFRawGlyph, SDFRawMetadata, SDFRawRectangle,
 
 pub mod buffers;
 pub mod data;
+pub mod fonts;
 pub mod shader;
 
 pub use buffers::*;
 pub use data::*;
+pub use fonts::*;
 
 /// ECS plugin that registers GPU resources and a render pass for 2D SDF UI.
 pub struct UIPlugin;
@@ -234,7 +236,7 @@ fn ui_render_pass(
     frame: ResMut<Frame>,
     resources: Res<UIRenderResources>
 ) {
-    resources.shapes_buffer.update(&*graphics, &test_tree(), &resources)?;
+    resources.shapes_buffer.update(&*graphics, &test_tree()?, &resources)?;
 
     let mut pass = frame.init_pass(
         &[
@@ -252,37 +254,31 @@ fn ui_render_pass(
 }
 
 /// Temporary demo tree used until a real UI tree source is wired in.
-fn test_tree() -> SDFElement {
+fn test_tree() -> anyhow::Result<SDFElement> {
     let mut children = LinkedList::new();
-    children.push_back(SDFElement {
-        center: Vec2::new(400.0, 350.0), 
-        dimensions: Vec2::new(150.0, 150.0),
-        style: SDFStyle { 
-            primary_color: Vec4::new(1.0, 1.0, 0.0, 1.0), 
-            border_color: Vec4::ZERO, 
-            border_width: 0.0
-        }, 
-        shape: SDFShape::Glyph(
-            vec![
-                SDFCurve { 
-                    a_offset: Vec2::new(-50.0, 0.0), 
-                    b_offset: Vec2::new(0.0, 50.0), 
-                    c_offset: Vec2::new(50.0, 0.0), 
-                    thickness: 3.0 
-                },
-                SDFCurve { 
-                    a_offset: Vec2::new(50.0, 0.0), 
-                    b_offset: Vec2::new(0.0, 30.0), 
-                    c_offset: Vec2::new(-50.0, 0.0), 
-                    thickness: 3.0 
-                }
-            ]
-        ), 
-        children: LinkedList::new(),
-        ..Default::default()
+    
+    let font_data = include_bytes!("../examples/LiberationSans-Regular.ttf");
+    let mut font = SDFFont::new(font_data)?;
+    let string = font.render_glyph_line("Hello World!@#%^&", 18.0)?;
+    let mut cur_x = (string.dimensions.x / -2.0) + 390.0;
+    string.chars.into_iter().for_each(|entry| {
+        if let Some(shape) = entry.shape {
+            cur_x += entry.advance;
+            children.push_back(SDFElement {
+                center: Vec2::new(cur_x - (entry.advance / 2.0), 300.0),
+                dimensions: entry.dimensions,
+                style: SDFStyle { primary_color: Vec4::ONE, border_color: Vec4::ONE, border_width: 0.0 },
+                shape,
+                children: LinkedList::new(),
+                ..Default::default()
+            });
+        } else {
+            cur_x += entry.advance;
+            // None
+        }
     });
 
-    SDFElement { 
+    Ok(SDFElement { 
         center: Vec2::new(400.0, 300.0), 
         dimensions: Vec2::new(200.0, 200.0),
         style: SDFStyle { 
@@ -294,5 +290,5 @@ fn test_tree() -> SDFElement {
         // shape: SDFShape::Empty,
         children: children,
         ..Default::default()
-    }
+    })
 }

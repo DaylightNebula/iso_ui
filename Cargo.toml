@@ -20,7 +20,9 @@ ahash = "0.8.12"
 wgpu = "29.0"
 anyhow = "1.0.103"
 ordered-float = { version = "5.3.0", features = ["bytemuck"] }
-bytemuck = { version = "1.25.0", features = ["derive"] }
+bytemuck = { version = "1.25.1", features = ["derive"] }
+ttf-parser = "0.25.1"
+expiringmap = "0.1.2"
 
 [dev-dependencies]
 gearbox = { path = "../gearbox" }
