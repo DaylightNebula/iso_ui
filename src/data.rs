@@ -17,13 +17,15 @@ pub struct SDFMetadata {
 }
 
 /// Modes that `SDFMetadata` can use.
+///
+/// `Normal` renders shapes using their assigned `SDFStyle` colors, while
+/// `HashColor` is a debug mode that assigns each shape a deterministic hash
+/// color.
 #[repr(u32)]
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum SDFMode {
-    /// Default rendering: shapes use their assigned `SDFStyle` colors.
     #[default]
     Normal = 0,
-    /// Debug rendering: each shape is assigned a deterministic hash color.
     HashColor = 1
 }
 
@@ -56,19 +58,19 @@ impl TreeBufferElement for SDFElement {
 /// Identifies the GPU chunk that holds shape-specific data for an `SDFElement`.
 ///
 /// Each variant corresponds to an `SDFShape` variant and stores the
-/// `ChunkHandle` or raw index the shader uses to look up geometry.
+/// `ChunkHandle` or raw index the shader uses to look up geometry: `Empty`
+/// has no shape-specific data (empty shape or circle), `Rectangle` points to
+/// a rounded-rectangle radii chunk, `Curve` points to a single cubic-bezier
+/// curve chunk, `Glyph` points to the bezier curves and glyph header
+/// describing a vector glyph, and `Raw` is a buffer index used when no
+/// chunked lookup is needed.
 #[derive(Clone, Default)]
 pub enum SDFRawStyleHandle {
-    /// No shape-specific data (empty shape or circle).
     #[default]
     Empty,
-    /// Handle to a rounded-rectangle radii chunk.
     Rectangle(ChunkHandle<SDFRawRectangle>),
-    /// Handle to a single cubic-bezier curve chunk.
     Curve(ChunkHandle<SDFRawBezier>),
-    /// Handles to the bezier curves and glyph header describing a vector glyph.
     Glyph(ChunkHandle<SDFRawBezier>, ChunkHandle<SDFRawGlyph>),
-    /// A raw buffer index when no chunked lookup is needed.
     Raw(u32)
 }
 
@@ -107,18 +109,19 @@ impl Default for SDFStyle {
 }
 
 /// Geometry drawn inside an `SDFElement`'s bounding box.
+///
+/// `Empty` draws no visible geometry (only children are rendered), `Circle`
+/// is a filled circle inscribed in the element's dimensions, `Rectangle` is
+/// a rounded rectangle with per-corner radii, `Bezier` is a single bezier
+/// stroke defined by three control-point offsets, and `Glyph` is a vector
+/// glyph composed of one or more bezier strokes.
 #[derive(Default, Debug, Clone, PartialEq)]
 pub enum SDFShape {
-    /// No visible geometry; only children are rendered.
     #[default]
     Empty,
-    /// A filled circle inscribed in the element's dimensions.
     Circle,
-    /// A rounded rectangle with per-corner radii.
     Rectangle(SDFRectangle),
-    /// A single bezier stroke defined by three control-point offsets.
     Bezier(SDFCurve),
-    /// A vector glyph composed of one or more bezier strokes.
     Glyph(Vec<SDFCurve>)
 }
 

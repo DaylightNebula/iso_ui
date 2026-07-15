@@ -4,7 +4,7 @@ use anarchy::{EntityBuilder, Query, Res, WorldDatabase, macros::system};
 use cell::{App, Graphics};
 use gearbox::{BasicMaterial, BasicMesh, Camera, GearboxRenderPlugin, MaterialRef, MeshRef, Transform, shaders::basic_vertex};
 use magician_vgpu::{glam::{self, Quat, Vec4}, rust::{Vec2, Vec3}};
-use ui::*;
+use iso_ui::*;
 
 fn main() -> anyhow::Result<()> {
     App::new()
