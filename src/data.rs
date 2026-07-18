@@ -1,7 +1,7 @@
 use anarchy::macros::{Getters, GettersMut, Setters};
+use gearbox::{BindlessArrayTextureAsset, Handle};
 use magician_vgpu::glam::*;
 use mutual::CowData;
-use vault::{Handle, BindlessArrayTextureAsset};
 
 use crate::{ChunkHandle, TreeBufferElement, shader::{SDFRawBezier, SDFRawGlyph, SDFRawRectangle, SDFRawShape, SDFRawStyle}};
 

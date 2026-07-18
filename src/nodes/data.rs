@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use anarchy::macros::{Getters, Setters};
 use derive_more::{Deref, DerefMut};
+use gearbox::{BindlessArrayTextureAsset, Handle};
 use magician_vgpu::glam::{Vec2, Vec4};
-use vault::{Handle, BindlessArrayTextureAsset};
 
 use crate::SDFFont;
 

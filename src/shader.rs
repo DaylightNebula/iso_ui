@@ -1,7 +1,7 @@
 use bytemuck::{Pod, Zeroable};
+use gearbox::{AssetVault, BindlessArrayTextureVault};
 use magician_vgpu::VirtualGpu;
 use ordered_float::OrderedFloat;
-use vault::{AssetVault, BindlessArrayTextureVault};
 
 use crate::{ChunkedBufferContent, SDFElement, SDFRawStyleHandle, SDFShape, TreeBufferContent, UIRenderResources};
 
