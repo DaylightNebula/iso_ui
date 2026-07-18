@@ -1,7 +1,7 @@
 use bytemuck::{Pod, Zeroable};
 use magician_vgpu::VirtualGpu;
 use ordered_float::OrderedFloat;
-use vault::{AssetVault, TextureVault};
+use vault::{AssetVault, BindlessArrayTextureVault};
 
 use crate::{ChunkedBufferContent, SDFElement, SDFRawStyleHandle, SDFShape, TreeBufferContent, UIRenderResources};
 
@@ -66,7 +66,7 @@ impl Default for SDFRawShape {
 }
 
 impl TreeBufferContent for SDFRawShape {
-    type ConvertInput<'a> = (&'a UIRenderResources, &'a TextureVault);
+    type ConvertInput<'a> = (&'a UIRenderResources, &'a BindlessArrayTextureVault);
     type InputType = SDFElement;
 
     fn new_gpu_type<'a>(vgpu: &VirtualGpu, rust: &Self::InputType, input: &'a Self::ConvertInput<'a>, next_ptr: u32, first_child_ptr: u32) -> anyhow::Result<Self> {

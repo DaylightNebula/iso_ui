@@ -5,7 +5,7 @@ use cell::{App, Graphics};
 use gearbox::{BasicMaterial, BasicMesh, Camera, GearboxRenderPlugin, MaterialRef, MeshRef, Transform, shaders::basic_vertex};
 use magician_vgpu::{glam::{self, Quat, Vec4}, rust::{Vec2, Vec3}};
 use iso_ui::*;
-use vault::{AssetVault, TextureVault};
+use vault::{AssetVault, BindlessArrayTextureVault};
 
 fn main() -> anyhow::Result<()> {
     App::new()
@@ -19,7 +19,7 @@ fn main() -> anyhow::Result<()> {
 #[system]
 fn setup(
     graphics: Res<Graphics>,
-    vault: Res<TextureVault>
+    vault: Res<BindlessArrayTextureVault>
 ) {
     let test_texture = vault.load(vault::AssetContent::Binary(Box::new(*include_bytes!("cobblestone.png"))))?;
 
