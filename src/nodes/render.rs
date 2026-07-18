@@ -36,16 +36,16 @@ fn resolve_radii(style: &Style, display_size: [f32; 2]) -> Vec4 {
 }
 
 fn background_to_style(style: &Style, display_size: [f32; 2]) -> SDFStyle {
-    let primary_color = match style.background() {
-        Background::Empty       => TRANSPARENT,
-        Background::Color(c)    => *c,
-        // Background::Image(h)    => (Vec4::ONE, Some(h.clone())),
+    let (primary_color, texture) = match style.background() {
+        Background::Empty       => (TRANSPARENT, None),
+        Background::Color(c)    => (*c, None),
+        Background::Image(h)    => (Vec4::ONE, Some(h.clone())),
     };
 
     let border_color = style.border_color().unwrap_or(TRANSPARENT);
     let border_width = eval_or(*style.border(), display_size, 0.0);
 
-    SDFStyle { primary_color, border_color, border_width, /*texture*/ }
+    SDFStyle { primary_color, border_color, border_width, texture }
 }
 
 // ── main entry point ─────────────────────────────────────────────────────────
@@ -359,7 +359,8 @@ fn build_text_element(
                     style: SDFStyle {
                         primary_color: text.color,
                         border_color: TRANSPARENT,
-                        border_width: 0.0
+                        border_width: 0.0,
+                        texture: None
                     },
                     shape,
                     children: Vec::new(),
@@ -380,7 +381,8 @@ fn build_text_element(
         style: SDFStyle {
             primary_color: text.color,
             border_color: TRANSPARENT,
-            border_width: 0.0
+            border_width: 0.0,
+            texture: None
         },
         shape: SDFShape::Empty,
         children: glyphs,

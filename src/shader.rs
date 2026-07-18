@@ -1,6 +1,7 @@
 use bytemuck::{Pod, Zeroable};
 use magician_vgpu::VirtualGpu;
 use ordered_float::OrderedFloat;
+use vault::{AssetVault, TextureVault};
 
 use crate::{ChunkedBufferContent, SDFElement, SDFRawStyleHandle, SDFShape, TreeBufferContent, UIRenderResources};
 
@@ -65,10 +66,12 @@ impl Default for SDFRawShape {
 }
 
 impl TreeBufferContent for SDFRawShape {
-    type ConvertInput = UIRenderResources;
+    type ConvertInput<'a> = (&'a UIRenderResources, &'a TextureVault);
     type InputType = SDFElement;
 
-    fn new_gpu_type(vgpu: &VirtualGpu, rust: &Self::InputType, input: &Self::ConvertInput, next_ptr: u32, first_child_ptr: u32) -> anyhow::Result<Self> {
+    fn new_gpu_type<'a>(vgpu: &VirtualGpu, rust: &Self::InputType, input: &'a Self::ConvertInput<'a>, next_ptr: u32, first_child_ptr: u32) -> anyhow::Result<Self> {
+        let (input, texture_vault) = input;
+
         let shape_ty = match &rust.shape {
             SDFShape::Empty => 0,
             SDFShape::Circle => 1,
@@ -76,8 +79,6 @@ impl TreeBufferContent for SDFRawShape {
             SDFShape::Bezier(_sdfcurve) => 3,
             SDFShape::Glyph(_sdfcurves) => 4
         };
-
-        // todo fix dropping
 
         let shape_ptr = match &rust.shape {
             SDFShape::Rectangle(sdfrectangle) => 
@@ -137,6 +138,12 @@ impl TreeBufferContent for SDFRawShape {
             _ => SDFRawStyleHandle::Empty
         };
 
+        let texture_ptr = rust.style.texture
+            .as_ref()
+            .and_then(|a| texture_vault.get(a))
+            .map(|a| *a.texture_idx() as u32)
+            .unwrap_or(u32::MAX);
+
         let style_ptr = input.styles_buffer().get(
             vgpu, 
             Box::new([
@@ -144,7 +151,7 @@ impl TreeBufferContent for SDFRawShape {
                     primary_color: (rust.style.primary_color.x.into(), rust.style.primary_color.y.into(), rust.style.primary_color.z.into(), rust.style.primary_color.w.into()),
                     border_color: (rust.style.border_color.x.into(), rust.style.border_color.y.into(), rust.style.border_color.z.into(), rust.style.border_color.w.into()),
                     border_width: rust.style.border_width.into(),
-                    texture_ptr: std::u32::MAX,
+                    texture_ptr,
                     _padding: (0, 0)
                 }
             ])

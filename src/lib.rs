@@ -4,6 +4,7 @@ use anarchy::{Query, Res, ResMut, macros::{Getters, Resource, system}};
 use cell::{App, Frame, Graphics, Plugin, WindowDimensions};
 use magician_vgpu::{Buffer, LoadOp, MutableBuffer, PassAttachment, PassTarget, Pipeline, ShaderSource, ShaderType, StoreOp, glam::Vec2};
 use mutual::CowData;
+use vault::TextureVault;
 
 use crate::{shader::{SDFRawBezier, SDFRawGlyph, SDFRawMetadata, SDFRawRectangle, SDFRawShaderData, SDFRawShape, SDFRawStyle}};
 
@@ -22,7 +23,8 @@ pub use fonts::*;
 pub struct UIPlugin;
 impl Plugin for UIPlugin {
     fn build(self, app: App) -> App {
-        app.on_render_startup(init_resources)
+        app.add_resource(TextureVault::default())
+            .on_render_startup(init_resources)
             .on_render_update(ui_render_pass)
     }
 }
@@ -49,7 +51,8 @@ pub struct UIRenderResources {
 /// Allocates UI GPU buffers, bind group, and pipeline on render startup.
 #[system(std::i32::MIN)]
 fn init_resources(
-    graphics: Res<Graphics>
+    graphics: Res<Graphics>,
+    vault: Res<TextureVault>
 ) {
     // create metadata buffer
     let metadata_buffer = MutableBuffer::new(
@@ -215,6 +218,7 @@ fn init_resources(
             }
         )
         .layout_raw::<SDFRawShaderData>(0, bind_group_layout)
+        .layout_raw::<TextureVault>(1, vault.bind_group_layout(&*graphics))
         .build(&*graphics);
 
     world.insert_resource(UIRenderResources {
@@ -235,7 +239,8 @@ fn ui_render_pass(
     graphics: Res<Graphics>,
     frame: ResMut<Frame>,
     resources: Res<UIRenderResources>,
-    window_dimensions: Res<WindowDimensions>
+    window_dimensions: Res<WindowDimensions>,
+    texture_vault: Res<TextureVault>
 ) {
     // create UI elements
     let nodes = Query::<&UINodeSDFRoot>::new(world.database())
@@ -253,7 +258,7 @@ fn ui_render_pass(
     };
 
     // upload new UI tree
-    resources.shapes_buffer.update(&*graphics, &root, &resources)?;
+    resources.shapes_buffer.update(&*graphics, &root, &(&**resources, &**texture_vault))?;
 
     // setup render pass
     let mut pass = frame.init_pass(
@@ -269,5 +274,6 @@ fn ui_render_pass(
     // draw to the screen
     pass.use_pipeline(resources.pipeline().get_ref());
     pass.bind_raw(0, resources.bind_group());
+    texture_vault.bind(&*graphics, &mut pass, 1);
     pass.pass_mut().draw(0..3, 0..1);
 }

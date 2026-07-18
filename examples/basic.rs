@@ -5,6 +5,7 @@ use cell::{App, Graphics};
 use gearbox::{BasicMaterial, BasicMesh, Camera, GearboxRenderPlugin, MaterialRef, MeshRef, Transform, shaders::basic_vertex};
 use magician_vgpu::{glam::{self, Quat, Vec4}, rust::{Vec2, Vec3}};
 use iso_ui::*;
+use vault::{AssetVault, TextureVault};
 
 fn main() -> anyhow::Result<()> {
     App::new()
@@ -17,8 +18,11 @@ fn main() -> anyhow::Result<()> {
 
 #[system]
 fn setup(
-    graphics: Res<Graphics>
+    graphics: Res<Graphics>,
+    vault: Res<TextureVault>
 ) {
+    let test_texture = vault.load(vault::AssetContent::Binary(Box::new(*include_bytes!("cobblestone.png"))))?;
+
     let vertices: [basic_vertex::VertexInput; 3] = [
         basic_vertex::VertexInput { position: Vec3::new(0.0,  0.5, 0.0), uvs: Vec2::new(0.5, 0.0) },
         basic_vertex::VertexInput { position: Vec3::new(-0.5,  -0.5, 0.0), uvs: Vec2::new(0.0, 1.0) },
@@ -63,7 +67,7 @@ fn setup(
     root_a.set_width(Val::Px(100.0));
     root_a.set_height(Val::Px(100.0));
     root_a.set_margin(Rect::single(Val::Px(10.0)));
-    // root_a.set_background(Background::Image(test_texture));
+    root_a.set_background(Background::Image(test_texture));
     root_a.set_border_color(Some(Vec4::ONE));
     root_a.set_border(Val::Px(1.0));
     root_a.set_border_radius(RectCorners::new(Val::Px(15.0), Val::Px(15.0), Val::Px(15.0), Val::Px(0.0)));

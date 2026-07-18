@@ -9,6 +9,7 @@ anarchy = { path = "../anarchy" }
 cell = { path = "../cell" }
 gearbox = { path = "../gearbox" }
 magician-vgpu = { path = "../shader_magician/magician-vgpu" }
+vault = { path = "../vault" }
 
 chrono = "0.4.44"
 futures = "0.3"

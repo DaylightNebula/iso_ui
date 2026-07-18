@@ -9,6 +9,9 @@ struct VertexOutput {
 @group(0) @binding(4) var<uniform> bezier: array<SDFBezier, 1000>;
 @group(0) @binding(5) var<uniform> glyphs: array<SDFGlyph, 1000>;
 
+@group(1) @binding(0) var ui_textures: binding_array<texture_2d<f32>>;
+@group(1) @binding(1) var ui_sampler: sampler;
+
 // Metadata required to draw 2D SDF shapes.
 //
 // - screen_dimensions: the width and height of the host screen
@@ -193,11 +196,11 @@ fn blend_shape(
 ) -> vec4<f32> {
     // calculate primary color with texture
     var primary_color = style.primary_color;
-    // if style.texture_ptr != 0xFFFFFFFFu {
-    //     let uv = (point - shape.center + (shape.dimensions / 2.0)) / shape.dimensions;
-    //     let tex_color = texture_sample(style.texture_ptr, uv);
-    //     primary_color = tex_color * primary_color;
-    // }
+    if style.texture_ptr != 0xFFFFFFFFu {
+        let uv = (point - shape.center + (shape.dimensions / 2.0)) / shape.dimensions;
+        let tex_color = textureSample(ui_textures[style.texture_ptr], ui_sampler, uv);
+        primary_color = tex_color * primary_color;
+    }
 
     // if style.border_width > 5.0 { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
     // else { return vec4<f32>(1.0, 1.0, 1.0, 1.0); }

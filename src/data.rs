@@ -1,6 +1,7 @@
 use anarchy::macros::{Getters, GettersMut, Setters};
 use magician_vgpu::glam::*;
 use mutual::CowData;
+use vault::{Handle, TextureAsset};
 
 use crate::{ChunkHandle, TreeBufferElement, shader::{SDFRawBezier, SDFRawGlyph, SDFRawRectangle, SDFRawShape, SDFRawStyle}};
 
@@ -96,6 +97,7 @@ pub struct SDFStyle {
     pub primary_color: Vec4,
     pub border_color: Vec4,
     pub border_width: f32,
+    pub texture: Option<Handle<TextureAsset>>
 }
 
 impl Default for SDFStyle {
@@ -103,7 +105,8 @@ impl Default for SDFStyle {
         Self {
             primary_color: Vec4::ONE,
             border_color: Vec4::ZERO,
-            border_width: 5.0
+            border_width: 5.0,
+            texture: None
         }
     }
 }

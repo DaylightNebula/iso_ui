@@ -23,7 +23,7 @@ pub trait TreeBufferContent: BufferContent + Default + Pod + 'static {
     ///
     /// For UI shapes this is `crate::UIRenderResources`, which provides the chunked
     /// buffers used to store per-shape detail.
-    type ConvertInput;
+    type ConvertInput<'a>;
 
     /// The input type of a tree.  This should be seperate from
     /// the type used by shaders (self) as rust will not use the
@@ -36,10 +36,10 @@ pub trait TreeBufferContent: BufferContent + Default + Pod + 'static {
     /// 
     /// If u32::MAX is given for either pointer, than the
     /// value it points to does not exist.
-    fn new_gpu_type(
+    fn new_gpu_type<'a>(
         vgpu: &VirtualGpu, 
         rust: &Self::InputType, 
-        input: &Self::ConvertInput, 
+        input: &'a Self::ConvertInput<'a>, 
         next_ptr: u32, 
         first_child_ptr: u32
     ) -> anyhow::Result<Self>;
@@ -98,7 +98,7 @@ impl<T: TreeBufferContent> TreeBuffer<T> {
     }
 
     /// Update this tree buffer from the given tree_root.
-    pub fn update(&self, vgpu: &VirtualGpu, tree_root: &T::InputType, input: &T::ConvertInput) -> anyhow::Result<()> {
+    pub fn update<'a>(&self, vgpu: &VirtualGpu, tree_root: &T::InputType, input: &'a T::ConvertInput<'a>) -> anyhow::Result<()> {
         let data = flatten_tree::<T>(vgpu, tree_root, input)?;
 
         ensure!(
@@ -118,7 +118,7 @@ impl<T: TreeBufferContent> TreeBuffer<T> {
 /// Flatten a rust-side tree into GPU-layout elements, in the order they'll
 /// be written to the buffer. The root is always index 0. Sibling `next_ptr`
 /// chains and parent `first_child_ptr`s are wired up as we go.
-fn flatten_tree<T: TreeBufferContent>(vgpu: &VirtualGpu, root: &T::InputType, input: &T::ConvertInput) -> anyhow::Result<Vec<T>> {
+fn flatten_tree<'a, T: TreeBufferContent>(vgpu: &VirtualGpu, root: &T::InputType, input: &'a T::ConvertInput<'a>) -> anyhow::Result<Vec<T>> {
     let mut output: Vec<T> = vec![T::new_gpu_type(vgpu, root, input, std::u32::MAX, std::u32::MAX)?];
 
     // (input node, its index in `output`)
