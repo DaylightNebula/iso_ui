@@ -4,7 +4,7 @@ use anarchy::{Query, Res, ResMut, macros::{Getters, Resource, system}};
 use cell::{App, Frame, Graphics, Plugin, WindowDimensions};
 use magician_vgpu::{Buffer, LoadOp, MutableBuffer, PassAttachment, PassTarget, Pipeline, ShaderSource, ShaderType, StoreOp, glam::Vec2};
 use mutual::CowData;
-use vault::BindlessArrayTextureVault;
+use vault::{BindableAssetVault, BindlessArrayTextureVault};
 
 use crate::{shader::{SDFRawBezier, SDFRawGlyph, SDFRawMetadata, SDFRawRectangle, SDFRawShaderData, SDFRawShape, SDFRawStyle}};
 
