@@ -1,5 +1,3 @@
-#![feature(linked_list_cursors)]
-
 use anarchy::{Query, Res, ResMut, macros::{Getters, Resource, system}};
 use cell::{App, Frame, Graphics, Plugin, WindowDimensions};
 use gearbox::{BindableAssetVault, BindlessArrayTextureVault};
