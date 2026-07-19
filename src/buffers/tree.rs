@@ -1,7 +1,7 @@
 use std::{collections::VecDeque, marker::PhantomData};
 
 use anarchy::macros::Getters;
-use anyhow::ensure;
+use anarchy::anyhow::{self, ensure};
 use bytemuck::Pod;
 use magician_vgpu::{BufferContent, VirtualGpu};
 

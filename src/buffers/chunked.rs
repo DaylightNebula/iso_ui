@@ -2,7 +2,7 @@ use std::{hash::{BuildHasher, Hash, Hasher}, marker::PhantomData, ops::{Deref, R
 
 use ahash::RandomState;
 use anarchy::macros::Getters;
-use anyhow::bail;
+use anarchy::anyhow::{self, bail};
 use bytemuck::Pod;
 use magician_vgpu::{Buffer, BufferContent, VirtualGpu};
 use mutual::{DashMap, RelaxedMutex, SharedData};
