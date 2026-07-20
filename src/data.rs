@@ -1,9 +1,9 @@
 use anarchy::macros::{Getters, GettersMut, Setters};
 use gearbox::{BindlessArrayTextureAsset, Handle};
-use magician_vgpu::glam::*;
+use magician_vgpu::{ChunkHandle, TreeBufferElement, glam::*};
 use mutual::CowData;
 
-use crate::{ChunkHandle, TreeBufferElement, shader::{SDFRawBezier, SDFRawGlyph, SDFRawRectangle, SDFRawShape, SDFRawStyle}};
+use crate::{shader::{SDFRawBezier, SDFRawGlyph, SDFRawRectangle, SDFRawShape, SDFRawStyle}};
 
 /// Screen-wide parameters passed to the UI SDF shader each frame.
 ///

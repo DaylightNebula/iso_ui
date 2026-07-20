@@ -1,18 +1,16 @@
 use anarchy::{Query, Res, ResMut, macros::{Getters, Resource, system}};
 use cell::{App, Frame, Graphics, Plugin, WindowDimensions};
 use gearbox::{BindableAssetVault, BindlessArrayTextureVault};
-use magician_vgpu::{Buffer, LoadOp, MutableBuffer, PassAttachment, PassTarget, Pipeline, ShaderSource, ShaderType, StoreOp, glam::Vec2};
+use magician_vgpu::{Buffer, ChunkedBuffer, LoadOp, MutableBuffer, PassAttachment, PassTarget, Pipeline, ShaderSource, ShaderType, StoreOp, TreeBuffer, glam::Vec2};
 use mutual::CowData;
 
 use crate::{shader::{SDFRawBezier, SDFRawGlyph, SDFRawMetadata, SDFRawRectangle, SDFRawShaderData, SDFRawShape, SDFRawStyle}};
 
-pub mod buffers;
 pub mod data;
 pub mod fonts;
 pub mod nodes;
 pub mod shader;
 
-pub use buffers::*;
 pub use data::*;
 pub use nodes::*;
 pub use fonts::*;

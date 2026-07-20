@@ -1,10 +1,10 @@
 use anarchy::anyhow;
 use bytemuck::{Pod, Zeroable};
 use gearbox::{AssetVault, BindlessArrayTextureVault};
-use magician_vgpu::VirtualGpu;
+use magician_vgpu::{ChunkedBufferContent, TreeBufferContent, VirtualGpu};
 use ordered_float::OrderedFloat;
 
-use crate::{ChunkedBufferContent, SDFElement, SDFRawStyleHandle, SDFShape, TreeBufferContent, UIRenderResources};
+use crate::{SDFElement, SDFRawStyleHandle, SDFShape, UIRenderResources};
 
 const HALF_MASK: u32 = 0xFFFF;
 const HALF_NONE: u32 = 0xFFFF;
