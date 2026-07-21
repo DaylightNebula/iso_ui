@@ -270,6 +270,6 @@ fn ui_render_pass(
     // draw to the screen
     pass.use_pipeline(resources.pipeline().get_ref());
     pass.bind_raw(0, resources.bind_group());
-    texture_vault.bind(&*graphics, &mut pass, 1);
+    texture_vault.bind(&*graphics, &mut pass, 1)?;
     pass.pass_mut().draw(0..3, 0..1);
 }
