@@ -2,6 +2,7 @@
 target/
 shader_dbg/
 shader_out/
+dist/
 
 *.lock
 *.glb

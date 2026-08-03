@@ -1,6 +1,6 @@
 use anarchy::anyhow;
 use bytemuck::{Pod, Zeroable};
-use gearbox::{AssetVault, BindlessArrayTextureVault};
+use gearbox::{AssetVault, AtlasTextureVault, BindlessArrayTextureVault, TextureHandle};
 use magician_vgpu::{ChunkedBufferContent, TreeBufferContent, VirtualGpu};
 use ordered_float::OrderedFloat;
 
@@ -67,11 +67,11 @@ impl Default for SDFRawShape {
 }
 
 impl TreeBufferContent for SDFRawShape {
-    type ConvertInput<'a> = (&'a UIRenderResources, &'a BindlessArrayTextureVault);
+    type ConvertInput<'a> = (&'a UIRenderResources, &'a BindlessArrayTextureVault, &'a AtlasTextureVault);
     type InputType = SDFElement;
 
     fn new_gpu_type<'a>(vgpu: &VirtualGpu, rust: &Self::InputType, input: &'a Self::ConvertInput<'a>, next_ptr: u32, first_child_ptr: u32) -> anyhow::Result<Self> {
-        let (input, texture_vault) = input;
+        let (input, bindless_vault, atlas_vault) = input;
 
         let shape_ty = match &rust.shape {
             SDFShape::Empty => 0,
@@ -139,11 +139,24 @@ impl TreeBufferContent for SDFRawShape {
             _ => SDFRawStyleHandle::Empty
         };
 
-        let texture_ptr = rust.style.texture
-            .as_ref()
-            .and_then(|a| texture_vault.get(a))
-            .map(|a| *a.texture_idx() as u32)
-            .unwrap_or(u32::MAX);
+        let texture_ptr = match rust.style.texture.as_ref() {
+            Some(TextureHandle::Bindless(handle)) => bindless_vault.get(handle)
+                .map(|a| *a.texture_idx() as u32)
+                .unwrap_or(u32::MAX),
+            Some(TextureHandle::Atlas(handle)) => atlas_vault.get(handle)
+                .and_then(|a| {
+                    let rect = SDFRawTextureRect {
+                        rect: (
+                            (a.offset_px().x as f32).into(), (a.offset_px().y as f32).into(),
+                            (a.size_px().x as f32).into(), (a.size_px().y as f32).into()
+                        )
+                    };
+                    input.texture_rects_buffer().get(vgpu, Box::new([rect])).ok()
+                })
+                .map(|chunk| *chunk.start_idx() as u32)
+                .unwrap_or(u32::MAX),
+            None => u32::MAX
+        };
 
         let style_ptr = input.styles_buffer().get(
             vgpu, 
@@ -254,6 +267,19 @@ pub struct SDFRawGlyph {
 unsafe impl Pod for SDFRawGlyph {}
 unsafe impl Zeroable for SDFRawGlyph {}
 impl ChunkedBufferContent for SDFRawGlyph {}
+
+/// A texture's placement rect in atlas-page pixel space: `(offset_x, offset_y, size_x,
+/// size_y)`. Only used (and only meaningful) when the atlas texture backend is active --
+/// see [`gearbox::AtlasTextureVault`].
+#[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq)]
+#[repr(C)]
+pub struct SDFRawTextureRect {
+    pub rect: (OrderedFloat<f32>, OrderedFloat<f32>, OrderedFloat<f32>, OrderedFloat<f32>)
+}
+
+unsafe impl Pod for SDFRawTextureRect {}
+unsafe impl Zeroable for SDFRawTextureRect {}
+impl ChunkedBufferContent for SDFRawTextureRect {}
 
 /// Pack a (possibly u32::MAX) pointer into its lower 16 bits, mapping
 /// u32::MAX -> 0xFFFF (the "no pointer" sentinel for a half).

@@ -1,5 +1,5 @@
 use anarchy::macros::{Getters, GettersMut, Setters};
-use gearbox::{BindlessArrayTextureAsset, Handle};
+use gearbox::TextureHandle;
 use magician_vgpu::{ChunkHandle, TreeBufferElement, glam::*};
 use mutual::CowData;
 
@@ -97,7 +97,7 @@ pub struct SDFStyle {
     pub primary_color: Vec4,
     pub border_color: Vec4,
     pub border_width: f32,
-    pub texture: Option<Handle<BindlessArrayTextureAsset>>
+    pub texture: Option<TextureHandle>
 }
 
 impl Default for SDFStyle {

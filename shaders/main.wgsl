@@ -8,9 +8,9 @@ struct VertexOutput {
 @group(0) @binding(3) var<uniform> rectangles: array<SDFRectangle, 1000>;
 @group(0) @binding(4) var<uniform> bezier: array<SDFBezier, 1000>;
 @group(0) @binding(5) var<uniform> glyphs: array<SDFGlyph, 1000>;
+@group(0) @binding(6) var<uniform> texture_rects: array<SDFTextureRect, 1000>;
 
-@group(1) @binding(0) var ui_textures: binding_array<texture_2d<f32>>;
-@group(1) @binding(1) var ui_sampler: sampler;
+__TEXTURE_GROUP__
 
 // Metadata required to draw 2D SDF shapes.
 //
@@ -54,6 +54,17 @@ struct SDFGlyph {
     _pad0: u32,
     _pad1: u32
 };
+
+struct SDFTextureRect {
+    rect: vec4<f32>
+};
+
+// Bindless: samples `ui_textures[ptr]` directly at `local_uv`.
+// Atlas: remaps `local_uv` into `texture_rects[ptr]`'s pixel-space rect on the shared
+// atlas page, normalized by the page's current size.
+fn sample_ui_texture(ptr: u32, local_uv: vec2<f32>) -> vec4<f32> {
+    __SAMPLE_TEXTURE_BODY__
+}
 
 fn hash_u32(x: u32) -> u32 {
     var h = x;
@@ -198,7 +209,7 @@ fn blend_shape(
     var primary_color = style.primary_color;
     if style.texture_ptr != 0xFFFFFFFFu {
         let uv = (point - shape.center + (shape.dimensions / 2.0)) / shape.dimensions;
-        let tex_color = textureSample(ui_textures[style.texture_ptr], ui_sampler, uv);
+        let tex_color = sample_ui_texture(style.texture_ptr, uv);
         primary_color = tex_color * primary_color;
     }
 

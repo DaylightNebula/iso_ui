@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anarchy::macros::{Getters, Setters};
 use derive_more::{Deref, DerefMut};
-use gearbox::{BindlessArrayTextureAsset, Handle};
+use gearbox::TextureHandle;
 use magician_vgpu::glam::{Vec2, Vec4};
 
 use crate::SDFFont;
@@ -167,7 +167,7 @@ pub enum Background {
     #[default]
     Empty,
     Color(Vec4),
-    Image(Handle<BindlessArrayTextureAsset>)
+    Image(TextureHandle)
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd)]

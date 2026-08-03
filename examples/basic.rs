@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anarchy::{EntityBuilder, Query, Res, WorldDatabase, anyhow, macros::system};
 use cell::{App, Graphics};
-use gearbox::{AssetContent, AssetVault, BasicMaterial, BasicMesh, BindlessArrayTextureVault, Camera, GearboxRenderPlugin, MaterialRef, MeshRef, Transform, shaders::basic_vertex};
+use gearbox::{AssetContent, BasicMaterial, BasicMesh, Camera, GearboxRenderPlugin, MaterialRef, MeshRef, TextureType, TextureVault, Transform, shaders::basic_vertex};
 use magician_vgpu::{glam::{self, Quat, Vec4}, rust::{Vec2, Vec3}};
 use iso_ui::*;
 
@@ -17,10 +17,10 @@ fn main() -> anyhow::Result<()> {
 
 #[system]
 fn setup(
-    graphics: Res<Graphics>,
-    vault: Res<BindlessArrayTextureVault>
+    graphics: Res<Graphics>
 ) {
-    let test_texture = vault.load(AssetContent::Binary(Box::new(*include_bytes!("cobblestone.png"))))?;
+    let test_texture = TextureVault::current(world, &graphics)?
+        .load(world, AssetContent::Binary(Box::new(*include_bytes!("cobblestone.png"))), TextureType::PNG)?;
 
     let vertices: [basic_vertex::VertexInput; 3] = [
         basic_vertex::VertexInput { position: Vec3::new(0.0,  0.5, 0.0), uvs: Vec2::new(0.5, 0.0), normals: Vec3::default() },
