@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use anarchy::{
-    EventTracker,
-    macros::{Getters, Setters},
+    EventTracker, ScheduleID, System, World, anyhow,
+    macros::{Getters, Setters, warn},
 };
 use derive_more::{Deref, DerefMut};
 use gearbox::TextureHandle;
@@ -13,14 +13,15 @@ use crate::{
     SDFFont, UINodeEndHoverEvent, UINodePressedEvent, UINodeReleasedEvent, UINodeStartHoverEvent,
 };
 
-#[derive(Debug, Clone, Deref, DerefMut)]
+#[derive(Clone, Deref, DerefMut)]
 pub struct UINode {
     id: Option<String>,
     #[deref]
     #[deref_mut]
     style: Style,
-    last_state: CowData<Option<LastState>>,
+    last_state: CowData<LastState>,
     children: Vec<UINode>,
+    listener: CowData<Box<dyn System<Interaction, anyhow::Result<()>>>>,
 }
 
 impl Default for UINode {
@@ -28,8 +29,9 @@ impl Default for UINode {
         Self {
             id: None,
             style: Style::default(),
-            last_state: CowData::new(None),
+            last_state: CowData::null(),
             children: Vec::new(),
+            listener: CowData::null(),
         }
     }
 }
@@ -57,22 +59,55 @@ impl UINode {
     }
 
     /// Returns the current interaction state of this node.
-    pub fn last_state(&self) -> RefCowData<Option<LastState>> {
-        self.last_state.lock_ref()
+    pub fn last_state(&self) -> Option<RefCowData<LastState>> {
+        if self.last_state.is_null() {
+            return None;
+        }
+        Some(self.last_state.lock_ref())
+    }
+
+    /// Get the current listener assigned to this node.
+    pub fn listener(&self) -> Option<RefCowData<Box<dyn System<Interaction, anyhow::Result<()>>>>> {
+        if self.listener.is_null() {
+            return None;
+        }
+        return Some(self.listener.get_ref());
+    }
+
+    /// Set the listener assigned to this node.
+    pub fn set_listener(&self, listener: Box<dyn System<Interaction, anyhow::Result<()>>>) {
+        self.listener.set(listener);
     }
 
     /// Sets the interaction state of this node.
-    pub(crate) fn set_last_state(&self, event_tracker: &EventTracker, last_state: LastState) {
-        let last_state_ref = self.last_state.get_ref();
-
+    pub(crate) fn set_last_state(
+        &self,
+        world: &World,
+        event_tracker: &EventTracker,
+        last_state: LastState,
+        schedule_id: ScheduleID,
+    ) {
         // make sure this node has a previous state and ID
-        if last_state_ref.is_some() && self.id.is_some() {
+        if !self.last_state.is_null() && self.id.is_some() {
             // get previous and new interaction
-            let prev_interaction = last_state_ref.as_ref().unwrap().interaction();
+            let last_state_ref = self.last_state.get_ref();
+            let prev_interaction = last_state_ref.interaction();
             let new_interaction = last_state.interaction();
 
             // if interactions have changed, pick event to broadcast
             if prev_interaction != new_interaction {
+                // call listener if available
+                if !self.listener.is_null() {
+                    let listener = &*self.listener.get_ref();
+                    let result = listener.execute(schedule_id, world, new_interaction);
+                    if result.is_err() {
+                        warn!(
+                            "Failed to execute UINode listener: {:?}",
+                            result.err().unwrap()
+                        )
+                    }
+                }
+
                 let id = self.id.as_ref().unwrap().clone();
                 match new_interaction {
                     Interaction::None => match prev_interaction {
@@ -94,7 +129,7 @@ impl UINode {
             }
         }
 
-        self.last_state.set(Some(last_state));
+        self.last_state.set(last_state);
     }
 
     /// Returns a reference to the style of this node.

@@ -384,10 +384,12 @@ fn ui_render_pass(
         .map(|a| a.clone())
         .collect::<Vec<_>>();
     let elements = layout_ui_nodes(
+        world,
         &event_tracker,
         &input_tracker,
         &nodes,
         [window_dimensions.x as f32, window_dimensions.y as f32],
+        schedule_id,
     );
 
     // create root element

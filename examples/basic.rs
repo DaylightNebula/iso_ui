@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anarchy::{
-    EntityBuilder, Event, EventSystemMinIDTracker, Query, Res, WorldDatabase, anyhow,
+    EntityBuilder, Event, EventSystemMinIDTracker, Input, Query, Res, WorldDatabase, anyhow,
     macros::{info, system},
 };
 use cell::{App, Graphics};
@@ -115,6 +115,7 @@ fn setup(graphics: Res<Graphics>) {
     root_b.set_border_color(Some(Vec4::new(0.5, 0.5, 0.5, 1.0)));
     root_b.set_border(Val::Px(1.0));
     root_b.set_border_radius(RectCorners::single(Val::Px(15.0)));
+    root_b.set_listener(Box::new(test_listener));
     root_b.set_text(Some(Text {
         font,
         content: "Hello World!".into(),
@@ -141,4 +142,9 @@ fn update(query: Query<(&MeshRef, &mut Transform)>, pressed_events: Event<UINode
     for event in pressed_events.read(&EVENT_MIN_ID_TRACKER) {
         info!("Pressed \"{}\"", event.id);
     }
+}
+
+#[system]
+fn test_listener(input: Input<Interaction>) {
+    info!("Test Listener Triggered! {:?}", *input)
 }

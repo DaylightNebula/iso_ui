@@ -1,4 +1,4 @@
-use anarchy::EventTracker;
+use anarchy::{EventTracker, ScheduleID, World};
 use magician_vgpu::glam::*;
 
 use crate::{
@@ -63,32 +63,38 @@ fn background_to_style(style: &Style, display_size: [f32; 2]) -> SDFStyle {
 /// `display_size` (width, height) in pixels.  Roots are stacked as a vertical
 /// flex column filling the whole display.
 pub fn layout_ui_nodes(
+    world: &World,
     event_tracker: &EventTracker,
     input_tracker: &UIInputTracker,
     nodes: &[UINode],
     display_size: [f32; 2],
+    schedule_id: ScheduleID,
 ) -> Vec<SDFElement> {
     // Treat the root list as a flex-column that fills the display.
     let available = Vec2::from_array(display_size);
     layout_children(
+        world,
         event_tracker,
         input_tracker,
         nodes,
         Vec2::ZERO,
         available,
         display_size,
+        schedule_id,
     )
 }
 
 // ── recursive layout ─────────────────────────────────────────────────────────
 
 fn layout_node(
+    world: &World,
     node: &UINode,
     event_tracker: &EventTracker,
     input_tracker: &UIInputTracker,
     origin: Vec2,
     available: Vec2,
     display_size: [f32; 2],
+    schedule_id: ScheduleID,
 ) -> SDFElement {
     let style = node.style();
 
@@ -171,6 +177,7 @@ fn layout_node(
         vec![]
     } else {
         layout_flex(
+            world,
             style,
             event_tracker,
             input_tracker,
@@ -178,6 +185,7 @@ fn layout_node(
             inner_origin,
             inner,
             display_size,
+            schedule_id,
         )
     };
 
@@ -223,7 +231,7 @@ fn layout_node(
         },
     };
 
-    node.set_last_state(event_tracker, last_state);
+    node.set_last_state(world, event_tracker, last_state, schedule_id);
 
     SDFElement {
         center,
@@ -238,6 +246,7 @@ fn layout_node(
 // ── flex layout ───────────────────────────────────────────────────────────────
 
 fn layout_flex(
+    world: &World,
     parent_style: &Style,
     event_tracker: &EventTracker,
     input_tracker: &UIInputTracker,
@@ -245,6 +254,7 @@ fn layout_flex(
     content_origin: Vec2,
     content_size: Vec2,
     display_size: [f32; 2],
+    schedule_id: ScheduleID,
 ) -> Vec<SDFElement> {
     let (is_row, v_align, h_align) = match parent_style.display() {
         Display::FlexRow {
@@ -257,12 +267,14 @@ fn layout_flex(
         } => (false, *vertical, *horizontal),
         Display::Grid => {
             return layout_grid(
+                world,
                 event_tracker,
                 input_tracker,
                 children,
                 content_origin,
                 content_size,
                 display_size,
+                schedule_id,
             );
         }
     };
@@ -367,12 +379,14 @@ fn layout_flex(
         let slot_origin = Vec2::new(child_origin.x - m[2], child_origin.y - m[0]);
 
         result.push(layout_node(
+            world,
             node,
             event_tracker,
             input_tracker,
             slot_origin,
             available,
             display_size,
+            schedule_id,
         ));
         cursor += main_size;
     }
@@ -381,12 +395,14 @@ fn layout_flex(
 
     for node in abs_children {
         result.push(layout_node(
+            world,
             node,
             event_tracker,
             input_tracker,
             content_origin,
             content_size,
             display_size,
+            schedule_id,
         ));
     }
 
@@ -396,12 +412,14 @@ fn layout_flex(
 // ── grid (minimal: equal-width columns, wrapping rows) ───────────────────────
 
 fn layout_grid(
+    world: &World,
     event_tracker: &EventTracker,
     input_tracker: &UIInputTracker,
     children: &[UINode],
     content_origin: Vec2,
     content_size: Vec2,
     display_size: [f32; 2],
+    schedule_id: ScheduleID,
 ) -> Vec<SDFElement> {
     // Simple auto-grid: sqrt(n) columns, equal cell sizes.
     let n = children.len() as f32;
@@ -421,12 +439,14 @@ fn layout_grid(
                 content_origin.y + row * cell_h,
             );
             layout_node(
+                world,
                 node,
                 event_tracker,
                 input_tracker,
                 origin,
                 Vec2::new(cell_w, cell_h),
                 display_size,
+                schedule_id,
             )
         })
         .collect()
@@ -529,16 +549,19 @@ fn build_text_element(
 /// without creating an element for the parent itself.  Useful for updating a
 /// sub-tree in place.
 pub fn layout_children(
+    world: &World,
     event_tracker: &EventTracker,
     input_tracker: &UIInputTracker,
     nodes: &[UINode],
     origin: Vec2,
     available: Vec2,
     display_size: [f32; 2],
+    schedule_id: ScheduleID,
 ) -> Vec<SDFElement> {
     // Synthesise a default column-flex parent style and run the flex pass.
     let parent_style = Style::default(); // FlexColumn { Start, Start }
     layout_flex(
+        world,
         &parent_style,
         event_tracker,
         input_tracker,
@@ -546,5 +569,6 @@ pub fn layout_children(
         origin,
         available,
         display_size,
+        schedule_id,
     )
 }
