@@ -1,10 +1,19 @@
 use std::sync::Arc;
 
-use anarchy::{EntityBuilder, Query, Res, WorldDatabase, anyhow, macros::system};
+use anarchy::{
+    EntityBuilder, Event, EventSystemMinIDTracker, Query, Res, WorldDatabase, anyhow,
+    macros::{info, system},
+};
 use cell::{App, Graphics};
-use gearbox::{AssetContent, BasicMaterial, BasicMesh, Camera, GearboxRenderPlugin, MaterialRef, MeshRef, TextureType, TextureVault, Transform, shaders::basic_vertex};
-use magician_vgpu::{glam::{self, Quat, Vec4}, rust::{Vec2, Vec3}};
+use gearbox::{
+    AssetContent, BasicMaterial, BasicMesh, Camera, GearboxRenderPlugin, MaterialRef, MeshRef,
+    TextureType, TextureVault, Transform, shaders::basic_vertex,
+};
 use iso_ui::*;
+use magician_vgpu::{
+    glam::{self, Quat, Vec4},
+    rust::{Vec2, Vec3},
+};
 
 fn main() -> anyhow::Result<()> {
     App::new()
@@ -16,45 +25,66 @@ fn main() -> anyhow::Result<()> {
 }
 
 #[system]
-fn setup(
-    graphics: Res<Graphics>
-) {
-    let test_texture = TextureVault::current(world, &graphics)?
-        .load(world, AssetContent::Binary(Box::new(*include_bytes!("cobblestone.png"))), TextureType::PNG)?;
+fn setup(graphics: Res<Graphics>) {
+    let test_texture = TextureVault::current(world, &graphics)?.load(
+        world,
+        AssetContent::Binary(Box::new(*include_bytes!("cobblestone.png"))),
+        TextureType::PNG,
+    )?;
 
     let vertices: [basic_vertex::VertexInput; 3] = [
-        basic_vertex::VertexInput { position: Vec3::new(0.0,  0.5, 0.0), uvs: Vec2::new(0.5, 0.0), normals: Vec3::default() },
-        basic_vertex::VertexInput { position: Vec3::new(-0.5,  -0.5, 0.0), uvs: Vec2::new(0.0, 1.0), normals: Vec3::default() },
-        basic_vertex::VertexInput { position: Vec3::new(0.5,  -0.5, 0.0), uvs: Vec2::new(1.0, 1.0), normals: Vec3::default() }
+        basic_vertex::VertexInput {
+            position: Vec3::new(0.0, 0.5, 0.0),
+            uvs: Vec2::new(0.5, 0.0),
+            normals: Vec3::default(),
+        },
+        basic_vertex::VertexInput {
+            position: Vec3::new(-0.5, -0.5, 0.0),
+            uvs: Vec2::new(0.0, 1.0),
+            normals: Vec3::default(),
+        },
+        basic_vertex::VertexInput {
+            position: Vec3::new(0.5, -0.5, 0.0),
+            uvs: Vec2::new(1.0, 1.0),
+            normals: Vec3::default(),
+        },
     ];
 
-    let mesh = BasicMesh::new(
-        &*graphics, 
-        &vertices, 
-        &[0, 1, 2]
-    );
+    let mesh = BasicMesh::new(&*graphics, &vertices, &[0, 1, 2]);
 
     world.insert(
         EntityBuilder::default()
             .add(Transform::identity())
-            .add(MaterialRef::new(BasicMaterial::new(glam::Vec4::new(0.1, 0.8, 0.2, 1.0))))
+            .add(MaterialRef::new(BasicMaterial::new(glam::Vec4::new(
+                0.1, 0.8, 0.2, 1.0,
+            ))))
             .add(MeshRef::new(mesh))
-            .build()
+            .build(),
     );
 
     world.insert(
         EntityBuilder::default()
-            .add(Transform::new(glam::Vec3::new(0.0, 0.0, 6.0), glam::Quat::IDENTITY, glam::Vec3::ONE))
+            .add(Transform::new(
+                glam::Vec3::new(0.0, 0.0, 6.0),
+                glam::Quat::IDENTITY,
+                glam::Vec3::ONE,
+            ))
             .add(Camera::default())
-            .build()  
+            .build(),
     );
 
     let font_bytes = include_bytes!("./LiberationSans-Regular.ttf");
     let font = Arc::new(SDFFont::new(font_bytes)?);
 
     let mut root = UINode::new("root".to_string());
-    root.set_position_type(PositionType::Absolute(Rect::new_bottom_right(Val::Px(20.0), Val::Px(20.0))));
-    root.set_display(Display::FlexColumn { vertical: Align::End, horizontal: Align::End });
+    root.set_position_type(PositionType::Absolute(Rect::new_bottom_right(
+        Val::Px(20.0),
+        Val::Px(20.0),
+    )));
+    root.set_display(Display::FlexColumn {
+        vertical: Align::End,
+        horizontal: Align::End,
+    });
     root.set_width(Val::PercentWidth(0.5));
     root.set_height(Val::PercentHeight(0.5));
     root.set_background(Background::Color(Vec4::new(0.05, 0.05, 0.05, 1.0)));
@@ -69,7 +99,12 @@ fn setup(
     root_a.set_background(Background::Image(test_texture));
     root_a.set_border_color(Some(Vec4::ONE));
     root_a.set_border(Val::Px(1.0));
-    root_a.set_border_radius(RectCorners::new(Val::Px(15.0), Val::Px(15.0), Val::Px(15.0), Val::Px(0.0)));
+    root_a.set_border_radius(RectCorners::new(
+        Val::Px(15.0),
+        Val::Px(15.0),
+        Val::Px(15.0),
+        Val::Px(0.0),
+    ));
 
     let mut root_b = UINode::new("root_b".to_string());
     root_b.set_width(Val::Px(200.0));
@@ -86,24 +121,24 @@ fn setup(
         color: Vec4::ONE,
         font_size: 24.0,
         horizontal_align: Align::End,
-        vertical_align: Align::End
+        vertical_align: Align::End,
     }));
 
     root.add(root_a);
     root.add(root_b);
-    
-    world.insert(
-        EntityBuilder::default()
-            .add(UINodeSDFRoot(root))
-            .build()
-    );
+
+    world.insert(EntityBuilder::default().add(UINodeSDFRoot(root)).build());
 }
 
+static EVENT_MIN_ID_TRACKER: EventSystemMinIDTracker = EventSystemMinIDTracker::new();
+
 #[system]
-fn update(
-    query: Query<(&MeshRef, &mut Transform)>
-) {
+fn update(query: Query<(&MeshRef, &mut Transform)>, pressed_events: Event<UINodePressedEvent>) {
     for (_mesh, mut transform) in query.as_iter() {
         transform.rotate_by(Quat::from_euler(glam::EulerRot::XYZ, 0.01, 0.01, 0.01));
+    }
+
+    for event in pressed_events.read(&EVENT_MIN_ID_TRACKER) {
+        info!("Pressed \"{}\"", event.id);
     }
 }

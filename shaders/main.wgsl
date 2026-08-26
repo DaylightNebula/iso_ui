@@ -111,7 +111,7 @@ fn walk_shape_tree(parent: SDFShape, point: vec2<f32>) -> vec4<f32> {
         stack_length--;
 
         // check if the point is influenced by this shape
-        let point_influence_shape = 
+        let point_influence_shape =
             point.x >= shape.dimensions.x / -2.0 + shape.center.x &&
             point.x <= shape.dimensions.x /  2.0 + shape.center.x &&
             point.y >= shape.dimensions.y / -2.0 + shape.center.y &&
@@ -120,7 +120,7 @@ fn walk_shape_tree(parent: SDFShape, point: vec2<f32>) -> vec4<f32> {
         // unpack next pointers
         let next_ptr = shape.next_ptrs >> 16;
         let child_ptr = shape.next_ptrs & 0xFFFF;
-    
+
         // if point is not in shape, simply advance to next and stop here
         if !point_influence_shape {
             if next_ptr != 0xFFFF {
@@ -238,7 +238,7 @@ fn fs_final(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let shape = shapes[0];
     var color = walk_shape_tree(shape, point);
-    if color.a > 0.0 && color.a < 1.0 { 
+    if color.a > 0.0 && color.a < 1.0 {
         color.r *= color.a;
         color.g *= color.a;
         color.b *= color.a;
@@ -285,9 +285,9 @@ fn dot2(v: vec2<f32>) -> f32 {
 }
 
 fn sdf_bezier(
-    pos: vec2<f32>, 
-    A: vec2<f32>, 
-    B: vec2<f32>, 
+    pos: vec2<f32>,
+    A: vec2<f32>,
+    B: vec2<f32>,
     C: vec2<f32>,
     thickness: f32
 ) -> f32 {
