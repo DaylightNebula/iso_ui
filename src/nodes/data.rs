@@ -75,7 +75,12 @@ impl UINode {
     }
 
     /// Set the listener assigned to this node.
-    pub fn set_listener(&self, listener: Box<dyn System<Interaction, anyhow::Result<()>>>) {
+    pub fn set_listener<S: System<Interaction, anyhow::Result<()>> + 'static>(&self, listener: S) {
+        self.listener.set(Box::new(listener));
+    }
+
+    /// Set the listener assigned to this node.
+    pub fn set_listener_box(&self, listener: Box<dyn System<Interaction, anyhow::Result<()>>>) {
         self.listener.set(listener);
     }
 

@@ -115,7 +115,7 @@ fn setup(graphics: Res<Graphics>) {
     root_b.set_border_color(Some(Vec4::new(0.5, 0.5, 0.5, 1.0)));
     root_b.set_border(Val::Px(1.0));
     root_b.set_border_radius(RectCorners::single(Val::Px(15.0)));
-    root_b.set_listener(Box::new(test_listener));
+    root_b.set_listener(test_listener);
     root_b.set_text(Some(Text {
         font,
         content: "Hello World!".into(),
