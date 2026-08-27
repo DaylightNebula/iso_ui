@@ -383,7 +383,7 @@ fn ui_render_pass(
         .as_iter()
         .map(|a| a.clone())
         .collect::<Vec<_>>();
-    let elements = layout_ui_nodes(
+    let node_elements = layout_ui_nodes(
         world,
         &event_tracker,
         &input_tracker,
@@ -391,6 +391,22 @@ fn ui_render_pass(
         [window_dimensions.x as f32, window_dimensions.y as f32],
         schedule_id,
     );
+
+    // create and sort ui elements
+    let mut elements = Query::<&UIRawElements>::new(world.database())
+        .as_iter()
+        .map(|a| (a.elements.clone(), a.priority))
+        .collect::<Vec<_>>();
+    let elements = if elements.is_empty() {
+        node_elements
+    } else {
+        elements.push((node_elements, 0));
+        elements.sort_by_key(|a| a.1);
+        elements
+            .into_iter()
+            .flat_map(|a| a.0.into_iter())
+            .collect::<Vec<_>>()
+    };
 
     // create root element
     let root = SDFElement {

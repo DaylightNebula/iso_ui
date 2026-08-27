@@ -1,7 +1,7 @@
-use anarchy::{EventTracker, Query, ScheduleID, World, macros::Component};
+use anarchy::macros::Component;
 use derive_more::{Deref, DerefMut};
 
-use crate::{SDFElement, UIInputTracker};
+use crate::SDFElement;
 
 pub mod data;
 pub mod events;
@@ -15,38 +15,14 @@ pub use render::*;
 #[derive(Default, Deref, DerefMut, Component)]
 pub struct UINodeSDFRoot(pub UINode);
 
-/// `UISDFProvider` to provide UI information about
-/// SDF shapes to be drawn.
-#[derive(Default, Debug)]
-pub struct UINodeSDFProvider;
-
-impl UINodeSDFProvider {
-    pub fn get(
-        &self,
-        world: &World,
-        display_size: &[f32; 2],
-        schedule_id: ScheduleID,
-    ) -> Box<dyn Iterator<Item = SDFElement>> {
-        // let vec = Query::<&UINodeSDFRoot>::new(world.database())
-        //     .as_iter()
-        //     .map(|node| sdf_render_ui_node(&*node, display_size))
-        //     .collect::<Vec<_>>();
-        let event_tracker = world.get_resource_ref::<EventTracker>().unwrap();
-        let input_tracker = world.get_resource_ref::<UIInputTracker>().unwrap();
-
-        let nodes = Query::<&UINodeSDFRoot>::new(world.database())
-            .as_iter()
-            .map(|a| a.clone())
-            .collect::<Vec<_>>();
-        let elements = render::layout_ui_nodes(
-            world,
-            &event_tracker,
-            &input_tracker,
-            &nodes,
-            *display_size,
-            schedule_id,
-        );
-
-        Box::new(elements.into_iter())
-    }
+/// A component of raw elements that should be rendered.
+/// This contains an element list that will be loaded and
+/// rendered via the `UIPlugin`.  Multiple `UIRawElements`
+/// will be rendered in order of priority with lowest first.
+/// Elements from `UINodeSDFRoot` are treated as have a
+/// priority value of zero.
+#[derive(Default, Component)]
+pub struct UIRawElements {
+    pub elements: Vec<SDFElement>,
+    pub priority: i32,
 }
