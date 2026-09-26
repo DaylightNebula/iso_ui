@@ -20,10 +20,12 @@ pub mod data;
 pub mod fonts;
 pub mod nodes;
 pub mod shader;
+pub mod widgets;
 
 pub use data::*;
 pub use fonts::*;
 pub use nodes::*;
+pub use widgets::*;
 
 #[derive(Default, Resource)]
 pub struct UIInputTracker {

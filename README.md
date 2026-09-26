@@ -73,6 +73,50 @@ against the current window size, uploads the flattened tree, and draws it. See
 Text is set with `Style::set_text(Some(Text { .. }))`; each character is rendered as
 a vector-glyph `SDFElement` outlined from the loaded TTF via `SDFFont`.
 
+## Widgets
+
+`widgets` is an immediate mode widget library on top of the node tree. Add `WidgetPlugin`
+alongside `UIPlugin`, then describe windows every frame from any render-update system through
+the `Widget` resource. Widgets return whether they were clicked or changed:
+
+```rust
+App::new()
+    .add_plugin(UIPlugin)
+    .add_plugin(WidgetPlugin::new(Arc::new(SDFFont::new(font_bytes)?)))
+    .on_render_update(settings_ui)
+    .run()
+```
+
+```rust
+#[system]
+fn settings_ui(widget: ResMut<Widget>, settings: ResMut<Settings>) {
+    widget.panel("Settings", Vec2::splat(10.0), 320.0, |ui| {
+        ui.checkbox(&mut settings.enabled, "Enabled");
+        ui.log_slider("rate", &mut settings.rate, 1..=1000, true, " per second");
+        ui.row(|ui| {
+            ui.text_field("name", &mut settings.name, "Name", 140.0);
+            if ui.button("Save") { /* ... */ }
+        });
+    });
+}
+```
+
+- Windows: `Widget::panel` (titled, dragged by its title) and `Widget::popup` (untitled, drawn over
+  panels). Both are kept on screen and sized to their content.
+- Widgets on `Ui`: `label`, `colored_label`, `label_right`, `separator`, `button`,
+  `button_hint` (tooltip while hovered), `selectable`, `checkbox`, `log_slider` (`u32` or
+  `f64`), `text_field` (edits as typed), `number_field` (hands back the typed text on Enter or
+  a click elsewhere), `row`, `header`, `scroll_rows` and `sections` (collapsing groups).
+- Lists only lay out their visible rows. The SDF buffers hold a few thousand elements and each
+  glyph is one, so keep long content in `scroll_rows`/`sections`.
+- `Widget::over_ui`/`wants_pointer` tell app input whether the pointer belongs to the UI, and
+  `Widget::clipboard_text` reads the OS clipboard.
+- Sizes follow the window's scale factor. Colors come from `Theme` (`Widget::theme_mut`), in linear
+  space for an sRGB surface.
+
+Widgets are drawn from last frame's layout, so a click lands one frame after it happens. See
+`examples/widgets.rs`.
+
 ## Architecture
 
 - `nodes` — `UINode`/`Style` (the CPU-authored tree) and `render::layout_ui_nodes`,
@@ -85,6 +129,7 @@ a vector-glyph `SDFElement` outlined from the loaded TTF via `SDFFont`.
   pointers) and `ChunkedBuffer` (a deduplicating arena for variable-length,
   shape-specific data such as rectangle radii, bezier curves, and glyph headers).
 - `shader` — the `SDFRaw*` GPU-layout types and the WGSL SDF shaders in `shaders/`.
+- `widgets` — `Widget`, `Ui` and `WidgetPlugin`, the immediate mode widgets above.
 
 ## Status
 
