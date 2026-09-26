@@ -101,18 +101,28 @@ fn settings_ui(widget: ResMut<Widget>, settings: ResMut<Settings>) {
 }
 ```
 
-- Windows: `Widget::panel` (titled, dragged by its title) and `Widget::popup` (untitled, drawn over
-  panels). Both are kept on screen and sized to their content.
-- Widgets on `Ui`: `label`, `colored_label`, `label_right`, `separator`, `button`,
-  `button_hint` (tooltip while hovered), `selectable`, `checkbox`, `log_slider` (`u32` or
-  `f64`), `text_field` (edits as typed), `number_field` (hands back the typed text on Enter or
-  a click elsewhere), `row`, `header`, `scroll_rows` and `sections` (collapsing groups).
+- Windows: `Widget::panel` (titled, dragged by its title, `panel_with_header` adds widgets right
+  of the title), `Widget::popup` (untitled, drawn over panels), `Widget::hud`/`hud_row` (pinned to
+  an anchor of the screen, drawn under panels, `hud_row` as wide as its widgets) and
+  `Widget::dialog` (a popup at a screen anchor). All are kept on screen and sized to their content.
+- Text on `Ui`: `label`, `colored_label`, `label_right`/`colored_label_right`, `legend` (dim, fixed
+  width so a column of them lines up), `strong` and `heading` (bold font), `caption` (small).
+- Controls on `Ui`: `button`, `button_tone`/`key_button` (`Tone::Primary` lit in the accent,
+  `Tone::Danger` in the error color), `selectable`, `list_row` (selection marker, color swatch and
+  trailing text), `checkbox`, `toggle` (sliding switch), `segmented` (one of several options),
+  `log_slider` and `log_track` (just the groove and knob, `u32` or `f64`), `text_field` (edits as
+  typed) and `number_field` (hands back the typed text on Enter or a click elsewhere).
+- Readouts on `Ui`: `seven_segment` (a digit display drawn from rectangles, cheaper than glyphs),
+  `led` (indicator light) and `keycap` (shows which input does what).
+- Layout on `Ui`: `row`, `space`, `separator`, `header`/`header_count`, `scroll_rows` and
+  `sections` (collapsing groups). `hint` shows a tooltip while the widget added last is hovered.
 - Lists only lay out their visible rows. The SDF buffers hold a few thousand elements and each
   glyph is one, so keep long content in `scroll_rows`/`sections`.
 - `Widget::over_ui`/`wants_pointer` tell app input whether the pointer belongs to the UI, and
   `Widget::clipboard_text` reads the OS clipboard.
-- Sizes follow the window's scale factor. Colors come from `Theme` (`Widget::theme_mut`), in linear
-  space for an sRGB surface.
+- Sizes follow the window's scale factor. Colors come from `Theme` (`WidgetPlugin::with_theme` or
+  `Widget::theme_mut`), in linear space for an sRGB surface, `srgb(0xRRGGBB)` converts hex colors.
+  `WidgetPlugin::with_bold` sets the font for titles, headings and `strong` text.
 
 Widgets are drawn from last frame's layout, so a click lands one frame after it happens. See
 `examples/widgets.rs`.

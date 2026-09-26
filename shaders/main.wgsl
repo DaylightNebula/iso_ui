@@ -331,56 +331,52 @@ fn sdf_line_segment(
 }
 
 // Returns the winding contribution of one quadratic bezier against a point.
-// Casts a ray in +X and counts signed crossings.
+// Casts a ray in +X and counts signed crossings. The curve is split where it turns in Y so each
+// piece is monotonic, and a piece only counts rows in [lower y, upper y). That way a vertex shared
+// by two curves is counted once when the outline passes through it and not at all when it only
+// touches it, where counting by curve parameter flips a whole row of the glyph.
 fn bezier_winding(pos: vec2<f32>, A: vec2<f32>, B: vec2<f32>, C: vec2<f32>) -> i32 {
-    // Reframe: shift so pos is the origin, find where curve.y == 0
-    // Quadratic coefficients for the Y component only
-    let a = A.y - 2.0 * B.y + C.y;  // t^2 coefficient
-    let b = 2.0 * (B.y - A.y);       // t^1 coefficient
-    let c = A.y - pos.y;             // t^0 coefficient (shifted)
+    let a = A.y - 2.0 * B.y + C.y;
+    let b = 2.0 * (B.y - A.y);
+    if 0.00001 < abs(a) {
+        let turn = -b / (2.0 * a);
+        if turn > 0.0 && 1.0 > turn {
+            return monotonic_winding(pos, A, B, C, 0.0, turn) + monotonic_winding(pos, A, B, C, turn, 1.0);
+        }
+    }
+    return monotonic_winding(pos, A, B, C, 0.0, 1.0);
+}
 
-    var winding = 0;
+fn quadratic_at(A: vec2<f32>, B: vec2<f32>, C: vec2<f32>, t: f32) -> vec2<f32> {
+    return mix(mix(A, B, t), mix(B, C, t), t);
+}
 
+// Winding of the part of a quadratic bezier between t_lo and t_hi, over which it's monotonic in Y.
+fn monotonic_winding(pos: vec2<f32>, A: vec2<f32>, B: vec2<f32>, C: vec2<f32>, t_lo: f32, t_hi: f32) -> i32 {
+    let y_lo = quadratic_at(A, B, C, t_lo).y;
+    let y_hi = quadratic_at(A, B, C, t_hi).y;
+    if y_lo == y_hi || pos.y < min(y_lo, y_hi) || pos.y >= max(y_lo, y_hi) { return 0; }
+
+    // where the piece crosses the ray's row
+    let a = A.y - 2.0 * B.y + C.y;
+    let b = 2.0 * (B.y - A.y);
+    let c = A.y - pos.y;
+    var t = 0.0;
     if 0.00001 > abs(a) {
-        // Degenerate: linear in Y
-        if 0.00001 < abs(b) {
-            let t = -c / b;
-            if t >= 0.0 && 1.0 > t {
-                let x = mix(mix(A.x, B.x, t), mix(B.x, C.x, t), t);
-                if x > pos.x {
-                    // Determine crossing direction from dy/dt = b
-                    winding += select(-1, 1, b > 0.0);
-                }
-            }
-        }
-        return winding;
+        t = -c / b;
+    } else {
+        let sq = sqrt(max(b * b - 4.0 * a * c, 0.0));
+        let t0 = (-b - sq) / (2.0 * a);
+        let t1 = (-b + sq) / (2.0 * a);
+        let mid = (t_lo + t_hi) * 0.5;
+        t = select(t1, t0, abs(t0 - mid) < abs(t1 - mid));
     }
+    t = clamp(t, t_lo, t_hi);
 
-    let disc = b * b - 4.0 * a * c;
-    if 0.0 > disc { return 0; }
-
-    let sq = sqrt(disc);
-    let t0 = (-b - sq) / (2.0 * a);
-    let t1 = (-b + sq) / (2.0 * a);
-
-    // For each root in [0, 1), check if crossing is to the right
-    // Use half-open interval [0,1) to avoid double-counting shared endpoints
-    var i = 0;
-    while (2 > i) {
-        let t = select(t0, t1, i == 1);
-        if t >= 0.0 && 1.0 > t {
-            let x = mix(mix(A.x, B.x, t), mix(B.x, C.x, t), t);
-            if x > pos.x {
-                // dy/dt at this t gives crossing direction
-                let dy = 2.0 * a * t + b;
-                winding += select(-1, 1, dy > 0.0);
-            }
-        }
-
-        i += 1;
+    if quadratic_at(A, B, C, t).x > pos.x {
+        return select(-1, 1, y_hi > y_lo);
     }
-
-    return winding;
+    return 0;
 }
 
 fn sdf_bezier_dist2(
