@@ -145,25 +145,38 @@ impl Widget {
     /// A window titled `title` that can be dragged around by its title, first shown at `pos`.
     /// `width` is in logical pixels.
     pub fn panel(&mut self, title: &str, pos: Vec2, width: f32, build: impl FnOnce(&mut Ui)) {
+        self.panel_with_header(title, pos, width, |_| {}, build);
+    }
+
+    /// A `panel` with `header`'s widgets laid out left of the title.
+    pub fn panel_with_header(&mut self, title: &str, pos: Vec2, width: f32, header: impl FnOnce(&mut Ui), build: impl FnOnce(&mut Ui)) {
         let title_id = format!("{title}/title");
         let pos = self.positions.entry(title.to_string()).or_insert(pos);
         if self.down && self.active.as_ref() == Some(&title_id) { *pos += self.cursor_delta; }
         let pos = *pos;
-        self.window(title, Some(title_id), pos, width, false, build);
+        self.window(title, Some((title_id, header)), pos, width, false, build);
     }
 
     /// An untitled window at `pos` drawn over the panels.
     pub fn popup(&mut self, id: &str, pos: Vec2, width: f32, build: impl FnOnce(&mut Ui)) {
-        self.window(id, None, pos, width, true, build);
+        self.window(id, None::<(String, fn(&mut Ui))>, pos, width, true, build);
     }
 
-    fn window(&mut self, id: &str, title_id: Option<String>, pos: Vec2, width: f32, popup: bool, build: impl FnOnce(&mut Ui)) {
+    fn window(&mut self, id: &str, title: Option<(String, impl FnOnce(&mut Ui))>, pos: Vec2, width: f32, popup: bool, build: impl FnOnce(&mut Ui)) {
         let (width, pad) = (self.px(width), self.px(PAD));
         let mut ui = Ui::new(self, id.to_string(), width - 2.0 * pad);
-        if let Some(title_id) = title_id {
-            let mut title = ui.text_node(Some(title_id), id, ui.widget.theme.text, Align::Start);
-            title.set_padding(Rect::default());
-            ui.push(title, Vec2::new(ui.width, ui.widget.px(ROW)));
+        if let Some((title_id, header)) = title {
+            let bar_width = ui.width;
+            let mut row = ui.child(true, 0.0);
+            header(&mut row);
+            // the title takes what the header leaves, so the whole bar still drags the window
+            let gap = if row.node.children().is_empty() { 0.0 } else { row.widget.px(GAP) };
+            let rest = (bar_width - row.extent - gap).max(0.0);
+            let mut title = row.text_node(Some(title_id), id, row.widget.theme.text, Align::Start);
+            if gap == 0.0 { title.set_padding(Rect::default()); }
+            row.push(title, Vec2::new(rest, row.widget.px(ROW)));
+            let (node, height) = (row.node, row.cross);
+            ui.push(node, Vec2::new(bar_width, height));
             ui.separator();
         }
         build(&mut ui);
