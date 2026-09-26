@@ -72,16 +72,16 @@ fn init_resources(
 ) {
     // each of these is bound as a fixed-size `array<T, N>` inside a single uniform
     // binding, so N is capped by the device's max_uniform_buffer_binding_size (on
-    // WebGL2 this is commonly ~16KB, far below native's 64KB+). 1000 is the native
-    // capacity ceiling; shrink per-type if the device can't fit that many.
+    // WebGL2 this is commonly ~16KB, far below native's 64KB+). MAX_BUFFER_ELEMENTS is
+    // the ceiling; shrink per-type if the device can't fit that many.
     let uniform_limit = graphics.device().limits().max_uniform_buffer_binding_size as u32;
-    let max_shapes = (uniform_limit / std::mem::size_of::<SDFRawShape>() as u32).min(1000);
-    let max_styles = (uniform_limit / std::mem::size_of::<SDFRawStyle>() as u32).min(1000);
-    let max_rectangles = (uniform_limit / std::mem::size_of::<SDFRawRectangle>() as u32).min(1000);
-    let max_bezier = (uniform_limit / std::mem::size_of::<SDFRawBezier>() as u32).min(1000);
-    let max_glyphs = (uniform_limit / std::mem::size_of::<SDFRawGlyph>() as u32).min(1000);
+    let max_shapes = (uniform_limit / std::mem::size_of::<SDFRawShape>() as u32).min(MAX_BUFFER_ELEMENTS);
+    let max_styles = (uniform_limit / std::mem::size_of::<SDFRawStyle>() as u32).min(MAX_BUFFER_ELEMENTS);
+    let max_rectangles = (uniform_limit / std::mem::size_of::<SDFRawRectangle>() as u32).min(MAX_BUFFER_ELEMENTS);
+    let max_bezier = (uniform_limit / std::mem::size_of::<SDFRawBezier>() as u32).min(MAX_BUFFER_ELEMENTS);
+    let max_glyphs = (uniform_limit / std::mem::size_of::<SDFRawGlyph>() as u32).min(MAX_BUFFER_ELEMENTS);
     let max_texture_rects =
-        (uniform_limit / std::mem::size_of::<SDFRawTextureRect>() as u32).min(1000);
+        (uniform_limit / std::mem::size_of::<SDFRawTextureRect>() as u32).min(MAX_BUFFER_ELEMENTS);
 
     // create metadata buffer
     let metadata_buffer = MutableBuffer::new(
@@ -340,6 +340,10 @@ fn init_resources(
         texture_rects_buffer,
     });
 }
+
+/// Most elements of each kind the UI buffers hold. Shaders address them with 16 bit pointers,
+/// and a font's glyph curves alone run past 1000.
+const MAX_BUFFER_ELEMENTS: u32 = 4096;
 
 static EVENT_MIN_ID_TRACKER: EventSystemMinIDTracker = EventSystemMinIDTracker::new();
 

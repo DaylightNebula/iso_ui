@@ -213,23 +213,15 @@ fn blend_shape(
         primary_color = tex_color * primary_color;
     }
 
-    // if style.border_width > 5.0 { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
-    // else { return vec4<f32>(1.0, 1.0, 1.0, 1.0); }
-
-    // calculate local color with borders taken into account
+    // blend fill and border premultiplied, so a transparent border doesn't darken the fill
     let border_mult = clamp(-d - style.border_width, 0.0, 1.0);
-    // return vec4<f32>(vec3<f32>(border_mult), 1.0);
-    var local_color = ((border_mult * primary_color) + ((1.0 - border_mult) * style.border_color)) * clamp(-d, 0.0, 1.0);
-    // return local_color;
-    // return style.border_color * (1.0 - border_mult);
-
-    // handle alpha edge cases
-    if local_color.a >= 1.0 { return local_color; }
+    let fill = vec4<f32>(primary_color.rgb * primary_color.a, primary_color.a);
+    let border = vec4<f32>(style.border_color.rgb * style.border_color.a, style.border_color.a);
+    let local_color = mix(border, fill, border_mult) * clamp(-d, 0.0, 1.0);
     if local_color.a <= 0.0 { return color; }
 
-    // add local color to output color, scaling for room left in alpha
-    let mult = min(local_color.a, 1.0 - color.a);
-    return color + vec4<f32>(local_color.r * local_color.a, local_color.g * local_color.a, local_color.b * local_color.a, local_color.a);
+    // premultiplied "over", shapes walked later sit on top
+    return local_color + color * (1.0 - local_color.a);
 }
 
 @fragment
@@ -237,14 +229,10 @@ fn fs_final(in: VertexOutput) -> @location(0) vec4<f32> {
     let point = in.screen_position.xy;
 
     let shape = shapes[0];
-    var color = walk_shape_tree(shape, point);
-    if color.a > 0.0 && color.a < 1.0 {
-        color.r *= color.a;
-        color.g *= color.a;
-        color.b *= color.a;
-        color.a = 1.0;
-    }
-    return color;
+    let color = walk_shape_tree(shape, point);
+    // the pipeline blends straight alpha
+    if color.a <= 0.0 { return vec4<f32>(0.0); }
+    return vec4<f32>(color.rgb / color.a, color.a);
 }
 
 fn sdf_circle(

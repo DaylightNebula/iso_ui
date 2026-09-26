@@ -75,13 +75,15 @@ impl SDFFont {
                 let bbox = self.face
                     .outline_glyph(id, &mut outline);
 
+                // spaces have no outline but still take up room in the line
+                size_tracker.x += hor_advance;
+
                 // build character entries
                 let char_entry =
                     if let Some(bbox) = bbox {
                         outline.set_bbox(bbox);
                         outline.set_units_per_em(self.face.units_per_em() as f32);
 
-                        size_tracker.x += hor_advance;
                         SDFCharEntry { 
                             shape: Some(outline.build(font_size, Vec2::new(hor_advance / -2.0, height / 2.0 + (self.face.descender() as f32 * font_size_mult)))), 
                             dimensions: Vec2::new(hor_advance, height), 
