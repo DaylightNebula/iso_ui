@@ -1127,6 +1127,7 @@ impl Area {
 enum Clipboard {
     #[cfg(target_os = "linux")]
     Wayland(smithay_clipboard::Clipboard),
+    #[cfg(not(target_arch = "wasm32"))]
     Arboard(arboard::Clipboard)
 }
 
@@ -1138,14 +1139,20 @@ impl Clipboard {
             // SAFETY: the display is the window's, which lives as long as the app
             return Some(Self::Wayland(unsafe { smithay_clipboard::Clipboard::new(display.display.as_ptr()) }))
         }
-        arboard::Clipboard::new().map(Self::Arboard).inspect_err(|err| eprintln!("No clipboard: {err}")).ok()
+        #[cfg(not(target_arch = "wasm32"))]
+        return arboard::Clipboard::new().map(Self::Arboard).inspect_err(|err| eprintln!("No clipboard: {err}")).ok();
+        #[cfg(target_arch = "wasm32")]
+        None
     }
 
     fn text(&mut self) -> Option<String> {
         match self {
             #[cfg(target_os = "linux")]
             Self::Wayland(clipboard) => clipboard.load().ok(),
-            Self::Arboard(clipboard) => clipboard.get_text().ok()
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::Arboard(clipboard) => clipboard.get_text().ok(),
+            #[cfg(target_arch = "wasm32")]
+            _ => None
         }
     }
 }
