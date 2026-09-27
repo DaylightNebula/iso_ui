@@ -12,7 +12,6 @@ use winit::{event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta}, keyb
 
 use crate::{Align, Background, Display, PositionType, Rect, RectCorners, SDFFont, Text, UINode, UINodeSDFRoot, Val};
 
-// Sizes in logical pixels, scaled by the window's scale factor.
 const FONT_SIZE: f32 = 14.0;
 const SMALL_FONT_SIZE: f32 = 11.5;
 const HEADING_FONT_SIZE: f32 = 22.0;
@@ -22,7 +21,6 @@ const GAP: f32 = 4.0;
 const TEXT_INSET: f32 = 7.0;
 const INDENT: f32 = 14.0;
 const RADIUS: f32 = 3.0;
-/// Darker band under a button's top that it sinks into while held.
 const LIP: f32 = 2.0;
 const CHECK: f32 = 14.0;
 const SLIDER: f32 = 120.0;
@@ -32,15 +30,11 @@ const SWITCH: Vec2 = Vec2::new(28.0, 16.0);
 const SWATCH: f32 = 10.0;
 const MARKER: f32 = 3.0;
 const LED: f32 = 8.0;
-/// Seven segment digit size and stroke.
 const DIGIT: Vec2 = Vec2::new(10.0, 17.0);
 const SEGMENT: f32 = 2.5;
 const SCROLLBAR: f32 = 6.0;
-/// List rows a wheel notch scrolls.
 const ROWS_PER_NOTCH: f32 = 2.0;
-/// Pixels of touchpad scroll treated as one wheel notch.
 const PX_PER_NOTCH: f32 = 50.0;
-
 const NONE: Vec4 = Vec4::ZERO;
 
 /// Widget colors. They're linear, so pick them for an sRGB surface, `srgb` converts hex colors.
@@ -154,9 +148,13 @@ pub struct Widget {
     down: bool,
     /// Left button went down this frame.
     pressed: bool,
+    /// Right button went down this frame.
+    right_pressed: bool,
     /// Wheel notches this frame, positive scrolls up.
     wheel: f32,
     over_ui: bool,
+    /// Topmost window under the pointer.
+    over_window: Option<String>,
     /// Topmost widget under the pointer.
     hot: Option<String>,
     /// Widget the held left button went down on.
@@ -173,13 +171,15 @@ pub struct Widget {
     /// Where each window was dragged to.
     positions: AHashMap<String, Vec2>,
     tooltip: Option<String>,
-    /// Drawn under the panels.
-    huds: Vec<UINode>,
-    panels: Vec<UINode>,
+    /// Drawn under the panels, each window after its id.
+    huds: Vec<(String, UINode)>,
+    panels: Vec<(String, UINode)>,
     /// Drawn over the panels.
-    popups: Vec<UINode>,
+    popups: Vec<(String, UINode)>,
     /// Last frame's tree, laid out by iso_ui since.
-    laid_out: UINode
+    laid_out: UINode,
+    /// Ids of `laid_out`'s windows, in order.
+    laid_out_ids: Vec<String>
 }
 
 impl Widget {
@@ -296,10 +296,11 @@ impl Widget {
         fill(&mut node, self.theme.panel, self.px(RADIUS + 1.0));
         node.set_border(Val::Px(1.0));
         node.set_border_color(Some(self.theme.border));
+        let window = (id.to_string(), node);
         match layer {
-            Layer::Hud => self.huds.push(node),
-            Layer::Panel => self.panels.push(node),
-            Layer::Popup => self.popups.push(node)
+            Layer::Hud => self.huds.push(window),
+            Layer::Panel => self.panels.push(window),
+            Layer::Popup => self.popups.push(window)
         }
     }
 
@@ -337,6 +338,11 @@ impl Widget {
 
     /// Whether a text field has the keyboard, so typing shouldn't also drive shortcuts.
     pub fn typing(&self) -> bool { self.focus.is_some() }
+
+    /// Whether either button went down this frame anywhere but over the window `id`, e.g. to close a popup.
+    pub fn pressed_outside(&self, id: &str) -> bool {
+        (self.pressed || self.right_pressed) && self.over_window.as_deref() != Some(id)
+    }
 
     /// Records where `node` and its widgets were laid out, the last one under the pointer is on top.
     fn collect(&mut self, node: &UINode) {
@@ -439,6 +445,11 @@ impl<'a> Ui<'a> {
     /// Shows `hint` next to the pointer while the widget added last is hovered.
     pub fn hint(&mut self, hint: &str) {
         if self.last.as_ref().is_some_and(|id| self.widget.is_hot(id)) { self.widget.tooltip = Some(hint.to_string()); }
+    }
+
+    /// Whether the widget added last was right clicked this frame.
+    pub fn right_clicked(&self) -> bool {
+        self.widget.right_pressed && self.last.as_ref().is_some_and(|id| self.widget.is_hot(id))
     }
 
     pub fn label(&mut self, text: &str) { self.colored_label(text, self.widget.theme.text) }
@@ -1155,6 +1166,7 @@ fn widgets_begin(widget: ResMut<Widget>, window_events: Event<WindowEvent>, grap
     widget.screen = Vec2::new(window.x as f32, window.y as f32);
     let last_cursor = widget.cursor;
     widget.pressed = false;
+    widget.right_pressed = false;
     widget.wheel = 0.0;
     widget.committed = None;
     for event in window_events.read(&WIDGET_EVENT_TRACKER) {
@@ -1164,6 +1176,7 @@ fn widgets_begin(widget: ResMut<Widget>, window_events: Event<WindowEvent>, grap
                 widget.down = *state == ElementState::Pressed;
                 widget.pressed |= widget.down;
             }
+            winit::event::WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Right, .. } => widget.right_pressed = true,
             winit::event::WindowEvent::MouseWheel { delta, .. } => widget.wheel += match delta {
                 MouseScrollDelta::LineDelta(_, y) => *y,
                 MouseScrollDelta::PixelDelta(p) => p.y as f32 / PX_PER_NOTCH
@@ -1178,10 +1191,12 @@ fn widgets_begin(widget: ResMut<Widget>, window_events: Event<WindowEvent>, grap
     widget.rects.clear();
     widget.hot = None;
     widget.over_ui = false;
+    widget.over_window = None;
     let laid_out = std::mem::take(&mut widget.laid_out);
-    for window in laid_out.children() {
+    for (idx, window) in laid_out.children().iter().enumerate() {
         if Area::of(window).is_some_and(|area| area.contains(widget.cursor)) {
             widget.over_ui = true;
+            widget.over_window = widget.laid_out_ids.get(idx).cloned();
             widget.hot = None;
         }
         widget.collect(window);
@@ -1206,11 +1221,13 @@ fn widgets_end(widget: ResMut<Widget>, roots: Query<&mut UINodeSDFRoot>) {
     }
     let mut root = UINode::default();
     let (huds, panels, popups) = (std::mem::take(&mut widget.huds), std::mem::take(&mut widget.panels), std::mem::take(&mut widget.popups));
-    root.add_all(huds.into_iter().chain(panels).chain(popups));
+    let (ids, windows): (Vec<_>, Vec<_>) = huds.into_iter().chain(panels).chain(popups).unzip();
+    root.add_all(windows.into_iter());
     for mut node in roots.as_iter() {
         node.0 = root.clone();
     }
     widget.laid_out = root;
+    widget.laid_out_ids = ids;
 }
 
 #[cfg(test)]
