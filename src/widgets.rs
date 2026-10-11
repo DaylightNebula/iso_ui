@@ -2,43 +2,47 @@
 //! through the `Widget` resource, `widgets_end` hands them to the `UIPlugin` as one node tree, and the
 //! next frame's `widgets_begin` hit tests the pointer against where that tree was laid out.
 
-use std::{ops::RangeInclusive, sync::{Arc, Mutex}};
+use std::{ops::RangeInclusive, sync::Arc};
 
 use ahash::AHashMap;
-use anarchy::{EntityBuilder, Event, EventSystemMinIDTracker, Query, Res, ResMut, WorldDatabase, macros::{Resource, system}};
-use cell::{App, Graphics, Plugin, WindowDimensions, WindowEvent};
+use anarchy::{EntityID, Res, ResMut, Resource, SystemPin, World, after, and, before, pin};
+use gearbox::{App, Graphics, Plugin, spawn};
 use magician_vgpu::glam::{Vec2, Vec4};
-use winit::{event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta}, keyboard::{Key, NamedKey}, raw_window_handle::{HasDisplayHandle, RawDisplayHandle}};
+use winit::{keyboard::Key, raw_window_handle::HasDisplayHandle};
 
-use crate::{Align, Background, Display, PositionType, Rect, RectCorners, SDFFont, Text, UINode, UINodeSDFRoot, Val};
+use crate::{
+    Align, AlignItems, Anchor, Background, JustifyContent, KeyOutcome, PositionType, Rect, RectCorners, SDFFont, Text,
+    UiClipboard, UiInput, UiTheme, UiWidgetsPlugin, UINode, UINodeSDFRoot, Val, apply_key, layout_entity_ui, pick_ui,
+    read_ui_input, spawn_ui, themed::{restyle_themed, tooltip_window}, ui_render_pass,
+};
 
-const FONT_SIZE: f32 = 14.0;
-const SMALL_FONT_SIZE: f32 = 11.5;
-const HEADING_FONT_SIZE: f32 = 22.0;
-const ROW: f32 = 24.0;
-const PAD: f32 = 8.0;
-const GAP: f32 = 4.0;
-const TEXT_INSET: f32 = 7.0;
-const INDENT: f32 = 14.0;
-const RADIUS: f32 = 3.0;
-const LIP: f32 = 2.0;
-const CHECK: f32 = 14.0;
-const SLIDER: f32 = 120.0;
-const GROOVE: f32 = 4.0;
-const KNOB: Vec2 = Vec2::new(8.0, 16.0);
-const SWITCH: Vec2 = Vec2::new(28.0, 16.0);
-const SWATCH: f32 = 10.0;
-const MARKER: f32 = 3.0;
-const LED: f32 = 8.0;
-const DIGIT: Vec2 = Vec2::new(10.0, 17.0);
-const SEGMENT: f32 = 2.5;
-const SCROLLBAR: f32 = 6.0;
+
+pub(crate) const FONT_SIZE: f32 = 14.0;
+pub(crate) const SMALL_FONT_SIZE: f32 = 11.5;
+pub(crate) const HEADING_FONT_SIZE: f32 = 22.0;
+pub(crate) const ROW: f32 = 24.0;
+pub(crate) const PAD: f32 = 8.0;
+pub(crate) const GAP: f32 = 4.0;
+pub(crate) const TEXT_INSET: f32 = 7.0;
+pub(crate) const INDENT: f32 = 14.0;
+pub(crate) const RADIUS: f32 = 3.0;
+pub(crate) const LIP: f32 = 2.0;
+pub(crate) const CHECK: f32 = 14.0;
+pub(crate) const SLIDER: f32 = 120.0;
+pub(crate) const GROOVE: f32 = 4.0;
+pub(crate) const KNOB: Vec2 = Vec2::new(8.0, 16.0);
+pub(crate) const SWITCH: Vec2 = Vec2::new(28.0, 16.0);
+pub(crate) const SWATCH: f32 = 10.0;
+pub(crate) const MARKER: f32 = 3.0;
+pub(crate) const LED: f32 = 8.0;
+pub(crate) const DIGIT: Vec2 = Vec2::new(10.0, 17.0);
+pub(crate) const SEGMENT: f32 = 2.5;
+pub(crate) const SCROLLBAR: f32 = 6.0;
 const ROWS_PER_NOTCH: f32 = 2.0;
-const PX_PER_NOTCH: f32 = 50.0;
-const NONE: Vec4 = Vec4::ZERO;
+pub(crate) const NONE: Vec4 = Vec4::ZERO;
 
 /// Widget colors. They're linear, so pick them for an sRGB surface, `srgb` converts hex colors.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Theme {
     /// Window background.
     pub panel: Vec4,
@@ -79,6 +83,74 @@ impl Default for Theme {
     }
 }
 
+/// How each widget looks in each state, shared by immediate mode and themed entity widgets so
+/// they match. Use them to style headless widgets the same way.
+impl Theme {
+    /// Lines across a column or between the widgets of a row.
+    pub fn separator(&self) -> Vec4 { self.panel.lerp(self.border, 0.8) }
+
+    /// A button's top, text and lip.
+    pub fn button(&self, tone: Tone, hot: bool) -> (Vec4, Vec4, Vec4) {
+        let (top, ink) = match tone {
+            Tone::Normal => (if hot { self.hover } else { self.widget }, self.text),
+            Tone::Danger => (if hot { self.hover } else { self.widget }, self.error),
+            Tone::Primary => (if hot { self.accent * Vec4::new(1.2, 1.2, 1.2, 1.0) } else { self.accent }, self.on_accent)
+        };
+        let lip = if tone == Tone::Primary { self.accent * Vec4::new(0.45, 0.45, 0.45, 1.0) } else { self.border };
+        (top, ink, lip)
+    }
+
+    /// A checkbox's border.
+    pub fn check_border(&self, hot: bool) -> Vec4 { if hot { self.dim } else { self.border } }
+
+    /// A sliding switch's track, track border and knob.
+    pub fn switch(&self, on: bool, hot: bool) -> (Vec4, Vec4, Vec4) {
+        let knob = if on { self.on_accent } else if hot { self.text } else { self.dim };
+        if on { (self.accent, self.accent, knob) } else { (self.well, self.border, knob) }
+    }
+
+    /// A slider's filled groove and knob, `lit` while hovered or dragged.
+    pub fn slider(&self, enabled: bool, lit: bool) -> (Vec4, Vec4) {
+        let knob = if !enabled { self.border } else if lit { self.text } else { self.hover };
+        (if enabled { self.accent } else { self.border }, knob)
+    }
+
+    /// A list row's background, selection marker and text. `Vec4::ZERO` means none.
+    pub fn list_row(&self, selected: bool, hot: bool) -> (Vec4, Vec4, Vec4) {
+        let background = if selected { self.selected } else if hot { self.hover } else { NONE };
+        let text = if selected || hot { self.text } else { self.text * Vec4::new(0.85, 0.85, 0.85, 1.0) };
+        (background, if selected { self.accent } else { NONE }, text)
+    }
+
+    /// A collapsing header's background and title.
+    pub fn header(&self, hot: bool) -> (Vec4, Vec4) {
+        (if hot { self.hover } else { NONE }, if hot { self.text } else { self.dim })
+    }
+
+    /// A text field's border.
+    pub fn field_border(&self, focused: bool, hot: bool) -> Vec4 {
+        if focused { self.accent } else if hot { self.dim } else { self.border }
+    }
+
+    /// A segmented control option's background and text.
+    pub fn option(&self, on: bool, hot: bool) -> (Vec4, Vec4) {
+        (if on { self.hover } else { NONE }, if on || hot { self.text } else { self.dim })
+    }
+
+    /// An indicator light's glow, dot, dot border and text, lit in `color`.
+    pub fn led(&self, lit: bool, color: Vec4) -> (Vec4, Vec4, Vec4, Vec4) {
+        if lit { (color * Vec4::new(1.0, 1.0, 1.0, 0.22), color, color, self.text) } else { (NONE, self.well, self.border, self.dim) }
+    }
+
+    /// A seven segment display's lit and unlit segments.
+    pub fn segments(&self, lit: bool) -> (Vec4, Vec4) {
+        (if lit { self.accent } else { self.well.lerp(self.accent, 0.4) }, self.well.lerp(self.accent, 0.05))
+    }
+
+    /// A scrollbar's thumb.
+    pub fn scroll_thumb(&self, hovered: bool) -> Vec4 { if hovered { self.dim } else { self.border } }
+}
+
 /// The linear color of an sRGB hex color like `0xF2A33A`.
 pub fn srgb(hex: u32) -> Vec4 {
     let channel = |shift: u32| {
@@ -115,10 +187,17 @@ impl WidgetPlugin {
 
 impl Plugin for WidgetPlugin {
     fn build(self, app: App) -> App {
-        app.add_resource(Widget { font: Some(self.font), bold: self.bold, theme: self.theme, ..Default::default() })
+        // immediate mode windows are described in the `Normal` pin, between these. Their hit
+        // testing runs before entity picking, as they're drawn over entity nodes
+        app.add_resource(UiTheme { theme: self.theme, font: Some(self.font), bold: self.bold })
+            .add_resource(Widget::default())
             .on_render_startup(setup_widgets)
-            .on_render_update(widgets_begin)
-            .on_render_update(widgets_end)
+            .on_render_update_with(widgets_begin, and(pin(SystemPin::Start), and(after(read_ui_input), before(pick_ui))))
+            .on_render_update_with(widgets_end, and(pin(SystemPin::End), before(ui_render_pass)))
+            // entity widgets: behavior in `Start`, looks in `End`
+            .add_plugin(UiWidgetsPlugin)
+            .on_render_startup(spawn_tooltip)
+            .on_render_update_with(restyle_themed, and(pin(SystemPin::End), before(layout_entity_ui)))
     }
 }
 
@@ -137,10 +216,15 @@ enum Layer { Hud, Panel, Popup }
 /// Pointer, keyboard and widget state shared by every window, plus the windows built this frame.
 #[derive(Resource, Default)]
 pub struct Widget {
+    /// Entity whose `UINodeSDFRoot` draws the windows.
+    root: Option<EntityID>,
+    /// This frame's copy of `UiTheme`, written back if changed.
     font: Option<Arc<SDFFont>>,
     bold: Option<Arc<SDFFont>>,
     theme: Theme,
-    clipboard: Option<Mutex<Clipboard>>,
+    /// `UiTheme` as this frame started.
+    synced: UiTheme,
+    clipboard: UiClipboard,
     scale: f32,
     screen: Vec2,
     cursor: Vec2,
@@ -182,6 +266,12 @@ pub struct Widget {
     laid_out_ids: Vec<String>
 }
 
+impl std::fmt::Debug for Widget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Widget").field("theme", &self.theme).field("cursor", &self.cursor).field("hot", &self.hot).finish_non_exhaustive()
+    }
+}
+
 impl Widget {
     pub fn set_font(&mut self, font: Arc<SDFFont>) { self.font = Some(font); }
 
@@ -207,9 +297,7 @@ impl Widget {
     /// Whether clicks and drags belong to the UI rather than what's behind it.
     pub fn wants_pointer(&self) -> bool { self.over_ui || self.using_pointer() }
 
-    pub fn clipboard_text(&self) -> Option<String> {
-        self.clipboard.as_ref()?.lock().ok()?.text()
-    }
+    pub fn clipboard_text(&self) -> Option<String> { self.clipboard.text() }
 
     /// A window titled `title` that can be dragged around by its title, first shown at `pos`.
     /// `width` is in logical pixels.
@@ -270,7 +358,7 @@ impl Widget {
             bar.push(title, Vec2::new(rest, bar.widget.px(ROW)));
             if !tools.children().is_empty() {
                 let mut tools = tools;
-                tools.set_display(Display::FlexRow { vertical: Align::Center, horizontal: Align::End });
+                tools.set_row(JustifyContent::End, AlignItems::Center);
                 bar.push(tools, Vec2::new(tools_width, tools_height));
             }
             let (node, height) = (bar.node, bar.cross.max(bar.widget.px(ROW)));
@@ -288,11 +376,12 @@ impl Widget {
         };
         // keep the whole window on screen
         let pos = pos.min(self.screen - size).max(Vec2::ZERO);
-        if row { node.set_display(Display::FlexRow { vertical: Align::Center, horizontal: Align::Start }); }
+        if row { node.set_row(JustifyContent::Start, AlignItems::Center); }
         node.set_position_type(PositionType::Absolute(Rect::new_top_left(Val::Px(pos.y), Val::Px(pos.x))));
         node.set_width(Val::Px(size.x));
         node.set_height(Val::Px(size.y));
-        node.set_padding(Rect::single(Val::Px(pad)));
+        // the border sits inside the padding
+        node.set_padding(Rect::single(Val::Px(pad - 1.0)));
         fill(&mut node, self.theme.panel, self.px(RADIUS + 1.0));
         node.set_border(Val::Px(1.0));
         node.set_border_color(Some(self.theme.border));
@@ -324,15 +413,12 @@ impl Widget {
         self.focus.as_ref().filter(|(focus, _)| focus == id).map(|(_, text)| text.as_str())
     }
 
-    fn key(&mut self, event: &KeyEvent) {
-        if self.focus.is_none() { return }
-        match &event.logical_key {
-            Key::Named(NamedKey::Enter) => self.committed = self.focus.take(),
-            Key::Named(NamedKey::Escape) => self.focus = None,
-            Key::Named(NamedKey::Backspace) => { self.focus.as_mut().unwrap().1.pop(); }
-            _ => if let Some(typed) = &event.text {
-                self.focus.as_mut().unwrap().1.extend(typed.chars().filter(|c| !c.is_control()));
-            }
+    fn key(&mut self, key: &Key, typed: Option<&str>) {
+        let Some((_, text)) = self.focus.as_mut() else { return };
+        match apply_key(text, key, typed) {
+            KeyOutcome::Submit => self.committed = self.focus.take(),
+            KeyOutcome::Cancel => self.focus = None,
+            KeyOutcome::Edited | KeyOutcome::Unchanged => {}
         }
     }
 
@@ -380,7 +466,7 @@ impl<'a> Ui<'a> {
 
     fn child(&mut self, row: bool, width: f32) -> Ui<'_> {
         let mut node = UINode::default();
-        if row { node.set_display(Display::FlexRow { vertical: Align::Center, horizontal: Align::Start }); }
+        if row { node.set_row(JustifyContent::Start, AlignItems::Center); }
         Ui { widget: &mut *self.widget, scope: self.scope.clone(), node, row, width, extent: 0.0, cross: 0.0, indent: self.indent, last: None }
     }
 
@@ -406,9 +492,10 @@ impl<'a> Ui<'a> {
     /// Adds `node` sized `size` after the children so far.
     fn push(&mut self, mut node: UINode, size: Vec2) {
         let gap = if self.node.children().is_empty() { 0.0 } else { self.px(GAP) };
-        // iso_ui shares leftover room between zero sized children
-        node.set_width(Val::Px(size.x.max(0.01)));
-        node.set_height(Val::Px(size.y.max(0.01)));
+        // widgets are laid out at exactly the size they asked for
+        node.set_width(Val::Px(size.x));
+        node.set_height(Val::Px(size.y));
+        node.set_flex_shrink(0.0);
         if self.row {
             node.set_margin(Rect::new_left(Val::Px(gap)));
             self.extent += gap + size.x;
@@ -510,7 +597,7 @@ impl<'a> Ui<'a> {
         // thinner lines vanish when they land between pixel centers
         let theme = self.widget.theme;
         let mut node = UINode::default();
-        node.set_background(Background::Color(theme.panel.lerp(theme.border, 0.8)));
+        node.set_background(Background::Color(theme.separator()));
         let size = if self.row { Vec2::new(2.0, self.row_height()) } else { Vec2::new(self.width, 2.0) };
         self.push(node, size);
     }
@@ -528,11 +615,7 @@ impl<'a> Ui<'a> {
         let theme = self.widget.theme;
         let (hot, held) = (self.widget.is_hot(&id), self.widget.dragging(&id) && self.widget.is_hot(&id));
         let clicked = self.widget.clicked(&id);
-        let (top, ink) = match tone {
-            Tone::Normal => (if hot { theme.hover } else { theme.widget }, theme.text),
-            Tone::Danger => (if hot { theme.hover } else { theme.widget }, theme.error),
-            Tone::Primary => (if hot { theme.accent * Vec4::new(1.2, 1.2, 1.2, 1.0) } else { theme.accent }, theme.on_accent)
-        };
+        let (top, ink, base) = theme.button(tone, hot);
         let (radius, lip) = (self.px(RADIUS), self.px(LIP));
         let mut face = self.text_node(None, text, ink, Align::Center);
         fill(&mut face, top, radius);
@@ -540,7 +623,6 @@ impl<'a> Ui<'a> {
         if held { face.set_margin(Rect::new_top(Val::Px(lip))); }
 
         let mut node = UINode::new(id);
-        let base = if tone == Tone::Primary { theme.accent * Vec4::new(0.45, 0.45, 0.45, 1.0) } else { theme.border };
         fill(&mut node, base, radius);
         node.add(face);
         self.push(node, Vec2::new(width, self.row_height()));
@@ -583,14 +665,15 @@ impl<'a> Ui<'a> {
         let height = self.row_height();
 
         let mut node = UINode::new(id);
-        node.set_display(Display::FlexRow { vertical: Align::Center, horizontal: Align::Start });
-        fill(&mut node, if selected { theme.selected } else if hot { theme.hover } else { NONE }, self.px(RADIUS));
+        node.set_row(JustifyContent::Start, AlignItems::Center);
+        let (background, marker_color, text_color) = theme.list_row(selected, hot);
+        fill(&mut node, background, self.px(RADIUS));
 
         let mut marker = UINode::default();
         marker.set_width(Val::Px(self.px(MARKER)));
         marker.set_height(Val::Px(height - self.px(8.0)));
         marker.set_margin(Rect::new_left(Val::Px(self.indent + self.px(2.0))));
-        fill(&mut marker, if selected { theme.accent } else { NONE }, self.px(MARKER) / 2.0);
+        fill(&mut marker, marker_color, self.px(MARKER) / 2.0);
         node.add(marker);
         let mut natural = self.indent + self.px(2.0 + MARKER);
 
@@ -607,8 +690,10 @@ impl<'a> Ui<'a> {
             natural += self.px(5.0) + size;
         }
 
-        let mut label = self.styled_text(None, text, if selected || hot { theme.text } else { theme.text * Vec4::new(0.85, 0.85, 0.85, 1.0) }, Align::Start, FONT_SIZE, selected);
+        let mut label = self.styled_text(None, text, text_color, Align::Start, FONT_SIZE, selected);
         label.set_padding(Rect::new_left(Val::Px(self.px(6.0))));
+        // pushes `trailing` to the end of the row
+        label.set_flex_grow(1.0);
         natural += self.widget.measure(text, FONT_SIZE, selected) + self.px(6.0);
         if let Some(trailing) = trailing {
             let mut tail = self.styled_text(None, trailing, theme.dim, Align::End, SMALL_FONT_SIZE, false);
@@ -634,12 +719,12 @@ impl<'a> Ui<'a> {
 
         let size = self.px(CHECK);
         let mut check = UINode::default();
-        check.set_display(Display::FlexColumn { vertical: Align::Center, horizontal: Align::Center });
+        check.set_column(JustifyContent::Center, AlignItems::Center);
         check.set_width(Val::Px(size));
         check.set_height(Val::Px(size));
         fill(&mut check, theme.well, self.px(RADIUS));
         check.set_border(Val::Px(1.0));
-        check.set_border_color(Some(if self.widget.is_hot(&id) { theme.dim } else { theme.border }));
+        check.set_border_color(Some(theme.check_border(self.widget.is_hot(&id))));
         if *value {
             let mut tick = UINode::default();
             tick.set_width(Val::Px(size / 2.0));
@@ -660,18 +745,18 @@ impl<'a> Ui<'a> {
 
         let size = SWITCH * self.widget.scale;
         let mut track = UINode::default();
-        track.set_display(Display::FlexRow { vertical: Align::Center, horizontal: if *value { Align::End } else { Align::Start } });
+        track.set_row(if *value { JustifyContent::End } else { JustifyContent::Start }, AlignItems::Center);
         track.set_width(Val::Px(size.x));
         track.set_height(Val::Px(size.y));
-        track.set_padding(Rect::single(Val::Px(self.px(2.0))));
-        fill(&mut track, if *value { theme.accent } else { theme.well }, size.y / 2.0);
+        track.set_padding(Rect::single(Val::Px(self.px(2.0) - 1.0)));
+        let (track_color, track_border, knob_color) = theme.switch(*value, self.widget.is_hot(&id));
+        fill(&mut track, track_color, size.y / 2.0);
         track.set_border(Val::Px(1.0));
-        track.set_border_color(Some(if *value { theme.accent } else { theme.border }));
+        track.set_border_color(Some(track_border));
         let knob_size = size.y - self.px(4.0);
         let mut knob = UINode::default();
         knob.set_width(Val::Px(knob_size));
         knob.set_height(Val::Px(knob_size));
-        let knob_color = if *value { theme.on_accent } else if self.widget.is_hot(&id) { theme.text } else { theme.dim };
         fill(&mut knob, knob_color, knob_size / 2.0);
         track.add(knob);
         self.labelled(id, track, size.x, text);
@@ -685,7 +770,7 @@ impl<'a> Ui<'a> {
         label.set_height(Val::Px(self.row_height()));
 
         let mut node = UINode::new(id);
-        node.set_display(Display::FlexRow { vertical: Align::Center, horizontal: Align::Start });
+        node.set_row(JustifyContent::Start, AlignItems::Center);
         node.add(control);
         node.add(label);
         self.push(node, Vec2::new(self.fill_width(width + self.text_width(text)), self.row_height()));
@@ -729,13 +814,14 @@ impl<'a> Ui<'a> {
         };
 
         let mut track = UINode::new(id.clone());
-        track.set_display(Display::FlexRow { vertical: Align::Center, horizontal: Align::Start });
-        track.add(groove_node(if enabled { theme.accent } else { theme.border }, before));
+        track.set_row(JustifyContent::Start, AlignItems::Center);
+        let lit = enabled && (self.widget.is_hot(&id) || self.widget.dragging(&id));
+        let (filled, knob_color) = theme.slider(enabled, lit);
+        track.add(groove_node(filled, before));
         let mut handle = UINode::default();
         handle.set_width(Val::Px(knob.x));
         handle.set_height(Val::Px(if enabled { knob.y } else { knob.y * 0.75 }));
-        let lit = enabled && (self.widget.is_hot(&id) || self.widget.dragging(&id));
-        fill(&mut handle, if !enabled { theme.border } else if lit { theme.text } else { theme.hover }, self.px(2.0));
+        fill(&mut handle, knob_color, self.px(2.0));
         handle.set_border(Val::Px(1.0));
         handle.set_border_color(Some(theme.border));
         track.add(handle);
@@ -749,8 +835,7 @@ impl<'a> Ui<'a> {
     /// of the digit before it.
     pub fn seven_segment(&mut self, text: &str, digits: usize, lit: bool) {
         let theme = self.widget.theme;
-        let on = if lit { theme.accent } else { theme.well.lerp(theme.accent, 0.4) };
-        let off = theme.well.lerp(theme.accent, 0.05);
+        let (on, off) = theme.segments(lit);
         let mut cells: Vec<(char, bool)> = vec![];
         for c in text.chars() {
             match (c, cells.last_mut()) {
@@ -772,9 +857,9 @@ impl<'a> Ui<'a> {
         };
         let half = (size.y - 3.0 * t) / 2.0;
         let mut window = UINode::default();
-        window.set_display(Display::FlexRow { vertical: Align::Center, horizontal: Align::End });
+        window.set_row(JustifyContent::End, AlignItems::Center);
         let inset = self.px(6.0);
-        window.set_padding(Rect::new(Val::Px(0.0), Val::Px(0.0), Val::Px(inset), Val::Px(inset - gap)));
+        window.set_padding(Rect::new(Val::Px(0.0), Val::Px(0.0), Val::Px(inset - 1.0), Val::Px(inset - gap - 1.0)));
         for (c, dp) in std::iter::repeat_n((' ', false), digits - cells.len()).chain(cells) {
             let bits = segments(c);
             let lit = |segment: u8| bits & segment != 0;
@@ -784,7 +869,7 @@ impl<'a> Ui<'a> {
             let bar = |segment_bit| segment(lit(segment_bit), size.x - 2.0 * t, t, t);
             let sides = |left_bit, right_bit| {
                 let mut row = UINode::default();
-                row.set_display(Display::FlexRow { vertical: Align::Start, horizontal: Align::Start });
+                row.set_row(JustifyContent::Start, AlignItems::Start);
                 row.set_width(Val::Px(size.x));
                 row.set_height(Val::Px(half));
                 row.add(segment(lit(left_bit), t, half, 0.0));
@@ -799,7 +884,7 @@ impl<'a> Ui<'a> {
             window.add(digit);
 
             let mut point = UINode::default();
-            point.set_display(Display::FlexColumn { vertical: Align::End, horizontal: Align::Center });
+            point.set_column(JustifyContent::End, AlignItems::Center);
             point.set_width(Val::Px(t + gap));
             point.set_height(Val::Px(size.y));
             let mut dot = segment(dp, t, t, 0.0);
@@ -819,25 +904,26 @@ impl<'a> Ui<'a> {
         let theme = self.widget.theme;
         let (size, halo) = (self.px(LED), self.px(LED * 1.9));
         let mut glow = UINode::default();
-        glow.set_display(Display::FlexColumn { vertical: Align::Center, horizontal: Align::Center });
+        glow.set_column(JustifyContent::Center, AlignItems::Center);
         glow.set_width(Val::Px(halo));
         glow.set_height(Val::Px(halo));
-        fill(&mut glow, if lit { color * Vec4::new(1.0, 1.0, 1.0, 0.22) } else { NONE }, halo / 2.0);
+        let (glow_color, dot_color, dot_border, text_color) = theme.led(lit, color);
+        fill(&mut glow, glow_color, halo / 2.0);
         let mut dot = UINode::default();
         dot.set_width(Val::Px(size));
         dot.set_height(Val::Px(size));
-        fill(&mut dot, if lit { color } else { theme.well }, size / 2.0);
+        fill(&mut dot, dot_color, size / 2.0);
         dot.set_border(Val::Px(1.0));
-        dot.set_border_color(Some(if lit { color } else { theme.border }));
+        dot.set_border_color(Some(dot_border));
         glow.add(dot);
 
-        let mut label = self.styled_text(None, text, if lit { theme.text } else { theme.dim }, Align::Start, FONT_SIZE, false);
+        let mut label = self.styled_text(None, text, text_color, Align::Start, FONT_SIZE, false);
         label.set_padding(Rect::new_left(Val::Px(self.px(4.0))));
         let label_width = self.widget.measure(text, FONT_SIZE, false) + self.px(4.0);
         label.set_width(Val::Px(label_width));
 
         let mut node = UINode::new(self.id(key));
-        node.set_display(Display::FlexRow { vertical: Align::Center, horizontal: Align::Start });
+        node.set_row(JustifyContent::Start, AlignItems::Center);
         node.add(glow);
         node.add(label);
         self.push(node, Vec2::new(self.fill_width(halo + label_width), self.row_height()));
@@ -855,7 +941,7 @@ impl<'a> Ui<'a> {
         fill(&mut node, theme.border, self.px(RADIUS));
         node.add(face);
         let mut slot = UINode::default();
-        slot.set_display(Display::FlexColumn { vertical: Align::Center, horizontal: Align::Start });
+        slot.set_column(JustifyContent::Center, AlignItems::Start);
         node.set_width(Val::Px(width));
         node.set_height(Val::Px(height));
         slot.add(node);
@@ -870,8 +956,8 @@ impl<'a> Ui<'a> {
         let height = self.row_height();
         let mut clicked = None;
         let mut strip = UINode::default();
-        strip.set_display(Display::FlexRow { vertical: Align::Center, horizontal: Align::Start });
-        strip.set_padding(Rect::single(Val::Px(inset)));
+        strip.set_row(JustifyContent::Start, AlignItems::Center);
+        strip.set_padding(Rect::single(Val::Px(inset - 1.0)));
         fill(&mut strip, theme.well, self.px(RADIUS));
         strip.set_border(Val::Px(1.0));
         strip.set_border_color(Some(theme.border));
@@ -881,12 +967,12 @@ impl<'a> Ui<'a> {
             let hot = self.widget.is_hot(&id);
             if self.widget.clicked(&id) { clicked = Some(idx); }
             let on = idx == selected;
-            let color = if on || hot { theme.text } else { theme.dim };
+            let (background, color) = theme.option(on, hot);
             let mut node = self.styled_text(Some(id), option, color, Align::Center, FONT_SIZE, on);
             let option_width = self.widget.measure(option, FONT_SIZE, true) + 2.0 * self.px(TEXT_INSET);
             node.set_width(Val::Px(option_width));
             node.set_height(Val::Px(height - 2.0 * inset));
-            fill(&mut node, if on { theme.hover } else { NONE }, self.px(RADIUS - 1.0));
+            fill(&mut node, background, self.px(RADIUS - 1.0));
             strip.add(node);
             width += option_width;
         }
@@ -941,9 +1027,12 @@ impl<'a> Ui<'a> {
             start += c.len_utf8();
         }
         let mut node = self.text_node(Some(id), &shown[start..], color, Align::Start);
+        // the border sits inside the padding
+        let inset = self.px(TEXT_INSET) - 1.0;
+        node.set_padding(Rect::new(Val::Px(0.0), Val::Px(0.0), Val::Px(inset + self.indent), Val::Px(inset)));
         fill(&mut node, theme.well, self.px(RADIUS));
         node.set_border(Val::Px(1.0));
-        node.set_border_color(Some(if focused { theme.accent } else if hot { theme.dim } else { theme.border }));
+        node.set_border_color(Some(theme.field_border(focused, hot)));
         self.push(node, Vec2::new(width, self.row_height()));
     }
 
@@ -961,15 +1050,18 @@ impl<'a> Ui<'a> {
         let height = self.row_height();
 
         let mut node = UINode::new(id.clone());
-        node.set_display(Display::FlexRow { vertical: Align::Center, horizontal: Align::Start });
-        fill(&mut node, if hot { theme.hover } else { NONE }, self.px(RADIUS));
+        node.set_row(JustifyContent::Start, AlignItems::Center);
+        let (background, title_color) = theme.header(hot);
+        fill(&mut node, background, self.px(RADIUS));
         let sign_width = self.px(14.0);
         let mut sign = self.styled_text(None, if open { "\u{2212}" } else { "+" }, theme.dim, Align::Center, FONT_SIZE, true);
         sign.set_width(Val::Px(sign_width));
         sign.set_margin(Rect::new_left(Val::Px(self.indent + self.px(1.0))));
         node.add(sign);
-        let mut title = self.styled_text(None, text, if hot { theme.text } else { theme.dim }, Align::Start, FONT_SIZE, true);
+        let mut title = self.styled_text(None, text, title_color, Align::Start, FONT_SIZE, true);
         title.set_padding(Rect::new_left(Val::Px(self.px(4.0))));
+        // pushes the count to the end of the row
+        title.set_flex_grow(1.0);
         node.add(title);
         let mut natural = self.indent + self.px(1.0) + sign_width + self.px(4.0) + self.widget.measure(text, FONT_SIZE, true);
         if let Some(count) = count {
@@ -1006,7 +1098,7 @@ impl<'a> Ui<'a> {
         content.set_height(Val::Px(height.max(0.01)));
 
         let mut area = UINode::new(id);
-        area.set_display(Display::FlexRow { vertical: Align::Start, horizontal: Align::Start });
+        area.set_row(JustifyContent::Start, AlignItems::Start);
         area.add(content);
         if shown < rows {
             let mut track = UINode::default();
@@ -1017,7 +1109,7 @@ impl<'a> Ui<'a> {
             let mut thumb = UINode::default();
             thumb.set_height(Val::Px(height * shown as f32 / rows as f32));
             thumb.set_margin(Rect::new_top(Val::Px(height * first as f32 / rows as f32)));
-            fill(&mut thumb, if hovered { self.widget.theme.dim } else { self.widget.theme.border }, bar / 2.0);
+            fill(&mut thumb, self.widget.theme.scroll_thumb(hovered), bar / 2.0);
             track.add(thumb);
             area.add(track);
         }
@@ -1050,16 +1142,16 @@ impl<'a> Ui<'a> {
 }
 
 // Seven segment bits, clockwise from the top then the middle bar.
-const SEG_A: u8 = 1;
-const SEG_B: u8 = 2;
-const SEG_C: u8 = 4;
-const SEG_D: u8 = 8;
-const SEG_E: u8 = 16;
-const SEG_F: u8 = 32;
-const SEG_G: u8 = 64;
+pub(crate) const SEG_A: u8 = 1;
+pub(crate) const SEG_B: u8 = 2;
+pub(crate) const SEG_C: u8 = 4;
+pub(crate) const SEG_D: u8 = 8;
+pub(crate) const SEG_E: u8 = 16;
+pub(crate) const SEG_F: u8 = 32;
+pub(crate) const SEG_G: u8 = 64;
 
 /// Segments lit to show `c`.
-fn segments(c: char) -> u8 {
+pub(crate) fn segments(c: char) -> u8 {
     match c {
         '0' | 'O' => SEG_A | SEG_B | SEG_C | SEG_D | SEG_E | SEG_F,
         '1' => SEG_B | SEG_C,
@@ -1123,76 +1215,34 @@ impl Area {
     fn size(&self) -> Vec2 { self.max - self.min }
 }
 
-/// The OS clipboard, through the window's own Wayland connection there like egui-winit.
-enum Clipboard {
-    #[cfg(target_os = "linux")]
-    Wayland(smithay_clipboard::Clipboard),
-    #[cfg(not(target_arch = "wasm32"))]
-    Arboard(arboard::Clipboard)
+fn setup_widgets(world: World, mut widget: ResMut<Widget>, graphics: Res<Graphics>) {
+    let display = graphics.window().and_then(|window| window.display_handle().ok()).map(|handle| handle.as_raw());
+    let clipboard = UiClipboard::new(display);
+    widget.clipboard = clipboard.clone();
+    world.insert_resource(clipboard);
+    widget.root = Some(spawn(&world, vec![Box::new(UINodeSDFRoot::default())]));
 }
 
-impl Clipboard {
-    #[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
-    fn new(display: Option<RawDisplayHandle>) -> Option<Self> {
-        #[cfg(target_os = "linux")]
-        if let Some(RawDisplayHandle::Wayland(display)) = display {
-            // SAFETY: the display is the window's, which lives as long as the app
-            return Some(Self::Wayland(unsafe { smithay_clipboard::Clipboard::new(display.display.as_ptr()) }))
-        }
-        #[cfg(not(target_arch = "wasm32"))]
-        return arboard::Clipboard::new().map(Self::Arboard).inspect_err(|err| eprintln!("No clipboard: {err}")).ok();
-        #[cfg(target_arch = "wasm32")]
-        None
-    }
+/// Spawns the window themed widgets show their `Tooltip`s in.
+fn spawn_tooltip(world: World) { spawn_ui(&world, tooltip_window()); }
 
-    fn text(&mut self) -> Option<String> {
-        match self {
-            #[cfg(target_os = "linux")]
-            Self::Wayland(clipboard) => clipboard.load().ok(),
-            #[cfg(not(target_arch = "wasm32"))]
-            Self::Arboard(clipboard) => clipboard.get_text().ok(),
-            #[cfg(target_arch = "wasm32")]
-            _ => None
-        }
-    }
-}
-
-#[system]
-fn setup_widgets(widget: ResMut<Widget>, graphics: Res<Graphics>) {
-    let display = graphics.window().display_handle().ok().map(|handle| handle.as_raw());
-    widget.clipboard = Clipboard::new(display).map(Mutex::new);
-    world.insert(EntityBuilder::default().add(UINodeSDFRoot::default()).build());
-}
-
-static WIDGET_EVENT_TRACKER: EventSystemMinIDTracker = EventSystemMinIDTracker::new();
-
-/// Reads this frame's input and hit tests it against last frame's layout.
-#[system(std::i32::MIN + 1)]
-fn widgets_begin(widget: ResMut<Widget>, window_events: Event<WindowEvent>, graphics: Res<Graphics>, window: Res<WindowDimensions>) {
-    widget.scale = graphics.window().scale_factor() as f32;
-    widget.screen = Vec2::new(window.x as f32, window.y as f32);
-    let last_cursor = widget.cursor;
-    widget.pressed = false;
-    widget.right_pressed = false;
-    widget.wheel = 0.0;
+/// Takes this frame's input and theme, and hit tests the pointer against last frame's layout.
+fn widgets_begin(mut widget: ResMut<Widget>, mut input: ResMut<UiInput>, theme: Res<UiTheme>) {
+    let widget = &mut *widget;
+    widget.theme = theme.theme;
+    widget.font = theme.font.clone();
+    widget.bold = theme.bold.clone();
+    widget.synced = UiTheme { theme: theme.theme, font: theme.font.clone(), bold: theme.bold.clone() };
+    widget.scale = input.scale;
+    widget.screen = input.screen;
+    widget.cursor = input.cursor;
+    widget.cursor_delta = input.delta;
+    widget.down = input.down;
+    widget.pressed = input.pressed;
+    widget.right_pressed = input.right_pressed;
+    widget.wheel = input.wheel;
     widget.committed = None;
-    for event in window_events.read(&WIDGET_EVENT_TRACKER) {
-        match &event.0 {
-            winit::event::WindowEvent::CursorMoved { position, .. } => widget.cursor = Vec2::new(position.x as f32, position.y as f32),
-            winit::event::WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
-                widget.down = *state == ElementState::Pressed;
-                widget.pressed |= widget.down;
-            }
-            winit::event::WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Right, .. } => widget.right_pressed = true,
-            winit::event::WindowEvent::MouseWheel { delta, .. } => widget.wheel += match delta {
-                MouseScrollDelta::LineDelta(_, y) => *y,
-                MouseScrollDelta::PixelDelta(p) => p.y as f32 / PX_PER_NOTCH
-            },
-            winit::event::WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => widget.key(event),
-            _ => {}
-        }
-    }
-    widget.cursor_delta = widget.cursor - last_cursor;
+    for (key, typed) in &input.keys { widget.key(key, typed.as_deref()); }
 
     // a window over the pointer hides the widgets of the windows under it
     widget.rects.clear();
@@ -1208,6 +1258,7 @@ fn widgets_begin(widget: ResMut<Widget>, window_events: Event<WindowEvent>, grap
         }
         widget.collect(window);
     }
+    input.over_windows = widget.over_ui;
 
     if widget.pressed {
         widget.active = widget.hot.clone();
@@ -1218,20 +1269,33 @@ fn widgets_begin(widget: ResMut<Widget>, window_events: Event<WindowEvent>, grap
     if !widget.down { widget.active = None; }
 }
 
-/// Hands this frame's windows to iso_ui, which lays them out and draws them.
-#[system(std::i32::MAX / 2 - 1)]
-fn widgets_end(widget: ResMut<Widget>, roots: Query<&mut UINodeSDFRoot>) {
+/// Hands this frame's windows to iso_ui, which lays them out and draws them, and keeps theme
+/// changes made through `Widget`.
+fn widgets_end(world: World, mut widget: ResMut<Widget>, mut theme: ResMut<UiTheme>) {
     if let Some(hint) = widget.tooltip.take() {
         let pos = widget.cursor + Vec2::splat(widget.px(16.0));
         let width = widget.text_width(&hint) / widget.scale + 2.0 * (PAD + TEXT_INSET);
         widget.popup("tooltip", pos, width, |ui| ui.label(&hint));
     }
+    let same_font = |a: &Option<Arc<SDFFont>>, b: &Option<Arc<SDFFont>>| match (a, b) {
+        (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+        (a, b) => a.is_none() && b.is_none()
+    };
+    if widget.theme != widget.synced.theme { theme.theme = widget.theme; }
+    if !same_font(&widget.font, &widget.synced.font) { theme.font = widget.font.clone(); }
+    if !same_font(&widget.bold, &widget.synced.bold) { theme.bold = widget.bold.clone(); }
+
     let mut root = UINode::default();
+    root.set_anchored(Anchor::Fill);
     let (huds, panels, popups) = (std::mem::take(&mut widget.huds), std::mem::take(&mut widget.panels), std::mem::take(&mut widget.popups));
     let (ids, windows): (Vec<_>, Vec<_>) = huds.into_iter().chain(panels).chain(popups).unzip();
     root.add_all(windows.into_iter());
-    for mut node in roots.as_iter() {
-        node.0 = root.clone();
+    if let Some(id) = widget.root {
+        match world.handle(id).get::<&mut UINodeSDFRoot>() {
+            Ok(Some(mut node)) => node.0 = root.clone(),
+            Ok(None) => {}
+            Err(err) => log::error!("Failed to update the widget root: {err:#}")
+        }
     }
     widget.laid_out = root;
     widget.laid_out_ids = ids;

@@ -1,9 +1,9 @@
-use anarchy::{
-    EventSystemMinIDTracker, EventTracker, Query, Res, ResMut,
-    macros::{Getters, Resource, system},
+use anarchy::{Event, Query, Res, ResMut, Resource, SystemPin, World, after, and, before, pin};
+use gearbox::{
+    App, AtlasTexturesPlugin, AtlasTextureVault, BindableAssetVault, BindlessArrayTextureVault,
+    BindlessTexturesPlugin, Frame, Graphics, Plugin, WindowDimensions, WindowEvent,
 };
-use cell::{App, Frame, Graphics, Plugin, WindowDimensions, WindowEvent};
-use gearbox::{AtlasTextureVault, BindableAssetVault, BindlessArrayTextureVault};
+use getset::Getters;
 use magician_vgpu::{
     Buffer, ChunkedBuffer, LoadOp, MutableBuffer, PassAttachment, PassTarget, Pipeline,
     ShaderSource, ShaderType, StoreOp, TreeBuffer, glam::Vec2,
@@ -17,17 +17,19 @@ use crate::shader::{
 };
 
 pub mod data;
+pub mod ecs;
 pub mod fonts;
 pub mod nodes;
 pub mod shader;
 pub mod widgets;
 
 pub use data::*;
+pub use ecs::*;
 pub use fonts::*;
 pub use nodes::*;
 pub use widgets::*;
 
-#[derive(Default, Resource)]
+#[derive(Debug, Default, Resource)]
 pub struct UIInputTracker {
     pub cursor_position: Vec2,
     pub is_cursor_down: bool,
@@ -37,11 +39,18 @@ pub struct UIInputTracker {
 pub struct UIPlugin;
 impl Plugin for UIPlugin {
     fn build(self, app: App) -> App {
-        app.add_resource(BindlessArrayTextureVault::default())
-            .add_resource(AtlasTextureVault::default())
+        app.add_plugin(BindlessTexturesPlugin)
+            .add_plugin(AtlasTexturesPlugin)
             .add_resource(UIInputTracker::default())
-            .on_render_startup(init_resources)
-            .on_render_update(ui_render_pass)
+            .add_resource(UiInput::default())
+            .add_resource(UiFocus::default())
+            .add_resource(EntityUiElements::default())
+            .on_render_startup_with(init_resources, pin(SystemPin::Start))
+            .on_render_update_with(read_ui_input, pin(SystemPin::Start))
+            .on_render_update_with(pick_ui, and(pin(SystemPin::Start), after(read_ui_input)))
+            // drawn over the main pass, which runs in the `Normal` pin
+            .on_render_update_with(layout_entity_ui, and(pin(SystemPin::End), before(ui_render_pass)))
+            .on_render_update_with(ui_render_pass, pin(SystemPin::End))
     }
 }
 
@@ -53,6 +62,7 @@ impl Plugin for UIPlugin {
 /// buffers hold deduplicated styles, rectangle radii, bezier curves, and glyph
 /// headers referenced by shapes.
 #[derive(Resource, Getters)]
+#[getset(get = "pub")]
 pub struct UIRenderResources {
     pub pipeline: CowData<Pipeline>,
     pub bind_group: wgpu::BindGroup,
@@ -65,9 +75,15 @@ pub struct UIRenderResources {
     pub texture_rects_buffer: ChunkedBuffer<SDFRawTextureRect>,
 }
 
+impl std::fmt::Debug for UIRenderResources {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UIRenderResources").finish_non_exhaustive()
+    }
+}
+
 /// Allocates UI GPU buffers, bind group, and pipeline on render startup.
-#[system(std::i32::MIN)]
 fn init_resources(
+    world: World,
     graphics: Res<Graphics>,
     bindless_vault: Res<BindlessArrayTextureVault>,
     atlas_vault: Res<AtlasTextureVault>,
@@ -347,62 +363,52 @@ fn init_resources(
 /// and a font's glyph curves alone run past 1000.
 const MAX_BUFFER_ELEMENTS: u32 = 4096;
 
-static EVENT_MIN_ID_TRACKER: EventSystemMinIDTracker = EventSystemMinIDTracker::new();
-
 /// Flattens the UI tree, uploads it, and draws a fullscreen SDF pass over the frame.
-#[system(std::i32::MAX / 2)]
-fn ui_render_pass(
+pub(crate) fn ui_render_pass(
+    world: World,
     mut input_tracker: ResMut<UIInputTracker>,
     graphics: Res<Graphics>,
-    frame: ResMut<Frame>,
+    mut frame: ResMut<Frame>,
     resources: Res<UIRenderResources>,
     window_dimensions: Res<WindowDimensions>,
     bindless_vault: Res<BindlessArrayTextureVault>,
     atlas_vault: Res<AtlasTextureVault>,
-    event_tracker: Res<EventTracker>,
+    window_events: Event<WindowEvent>,
+    entity_ui: Res<EntityUiElements>,
+    mut roots: Query<&'static UINodeSDFRoot>,
+    mut raw_elements: Query<&'static UIRawElements>,
 ) {
-    // get window events
-    let window_events = event_tracker.pull_events_ref::<WindowEvent>(&EVENT_MIN_ID_TRACKER);
-    for event in window_events {
-        match &**event {
-            winit::event::WindowEvent::CursorMoved {
-                device_id: _,
-                position,
-            } => {
+    for event in window_events.read() {
+        match &*event {
+            winit::event::WindowEvent::CursorMoved { position, .. } => {
                 input_tracker.cursor_position = Vec2::new(position.x as f32, position.y as f32);
             }
-            winit::event::WindowEvent::MouseInput {
-                device_id: _,
-                state,
-                button,
-            } => {
-                if *button == MouseButton::Left {
-                    input_tracker.is_cursor_down = *state == ElementState::Pressed;
-                }
+            winit::event::WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
+                input_tracker.is_cursor_down = *state == ElementState::Pressed;
             }
             _ => {}
         }
     }
 
-    // create UI elements
-    let nodes = Query::<&UINodeSDFRoot>::new(world.database())
-        .as_iter()
-        .map(|a| a.clone())
-        .collect::<Vec<_>>();
-    let node_elements = layout_ui_nodes(
-        world,
-        &event_tracker,
+    // clone the roots out so listeners called during layout can lock them
+    let mut nodes = vec![];
+    while let Ok(Some((_, root))) = roots.next() {
+        nodes.push(root.0.clone());
+    }
+    // entity nodes go under node trees, which hold the immediate mode windows
+    let mut node_elements = entity_ui.elements.clone();
+    node_elements.extend(layout_ui_nodes(
+        &world,
         &input_tracker,
         &nodes,
         [window_dimensions.x as f32, window_dimensions.y as f32],
-        schedule_id,
-    );
+    ));
 
     // create and sort ui elements
-    let mut elements = Query::<&UIRawElements>::new(world.database())
-        .as_iter()
-        .map(|a| (a.elements.clone(), a.priority))
-        .collect::<Vec<_>>();
+    let mut elements = vec![];
+    while let Ok(Some((_, raw))) = raw_elements.next() {
+        elements.push((raw.elements.clone(), raw.priority));
+    }
     let elements = if elements.is_empty() {
         node_elements
     } else {
@@ -425,12 +431,22 @@ fn ui_render_pass(
         ..Default::default()
     };
 
+    if let Err(err) = draw_ui(&root, &graphics, &mut frame, &resources, &bindless_vault, &atlas_vault) {
+        log::error!("Failed to draw the UI: {err:#}");
+    }
+}
+
+/// Uploads `root` and draws it over the frame.
+fn draw_ui(
+    root: &SDFElement,
+    graphics: &Graphics,
+    frame: &mut Frame,
+    resources: &UIRenderResources,
+    bindless_vault: &BindlessArrayTextureVault,
+    atlas_vault: &AtlasTextureVault,
+) -> gearbox::anyhow::Result<()> {
     // upload new UI tree
-    resources.shapes_buffer.update(
-        &*graphics,
-        &root,
-        &(&**resources, &**bindless_vault, &**atlas_vault),
-    )?;
+    resources.shapes_buffer.update(graphics, root, &(resources, bindless_vault, atlas_vault))?;
 
     // setup render pass
     let mut pass = frame.init_pass(
@@ -446,9 +462,10 @@ fn ui_render_pass(
     pass.use_pipeline(resources.pipeline().get_ref());
     pass.bind_raw(0, resources.bind_group());
     if *graphics.supports_bindless_arrays() {
-        bindless_vault.bind(&*graphics, &mut pass, 1)?;
+        bindless_vault.bind(graphics, &mut pass, 1)?;
     } else {
-        atlas_vault.bind(&*graphics, &mut pass, 1)?;
+        atlas_vault.bind(graphics, &mut pass, 1)?;
     }
     pass.pass_mut().draw(0..3, 0..1);
+    Ok(())
 }

@@ -1,13 +1,12 @@
 use std::sync::Arc;
 
-use anarchy::{EntityBuilder, ResMut, WorldDatabase, anyhow, macros::{Resource, system}};
-use cell::App;
-use gearbox::{Camera, GearboxRenderPlugin, Transform};
+use anarchy::{ResMut, Resource, World};
+use gearbox::{App, Camera, GearboxRenderPlugin, Transform, anyhow, spawn};
 use iso_ui::*;
 use magician_vgpu::glam::{self, Vec2};
 
 /// Everything the widgets below edit.
-#[derive(Resource)]
+#[derive(Debug, Resource)]
 struct Settings {
     enabled: bool,
     rate: u32,
@@ -31,19 +30,16 @@ fn main() -> anyhow::Result<()> {
         .run()
 }
 
-#[system]
-fn setup() {
+fn setup(world: World) {
     // the UI draws over the camera's render
-    world.insert(
-        EntityBuilder::default()
-            .add(Transform::new(glam::Vec3::new(0.0, 0.0, 6.0), glam::Quat::IDENTITY, glam::Vec3::ONE))
-            .add(Camera::default())
-            .build()
-    );
+    spawn(&world, vec![
+        Box::new(Transform::new(glam::Vec3::new(0.0, 0.0, 6.0), glam::Quat::IDENTITY, glam::Vec3::ONE)),
+        Box::new(Camera::default()),
+    ]);
 }
 
-#[system]
-fn settings_ui(widget: ResMut<Widget>, settings: ResMut<Settings>) {
+fn settings_ui(mut widget: ResMut<Widget>, mut settings: ResMut<Settings>) {
+    let settings = &mut *settings;
     widget.panel("Widgets", Vec2::splat(10.0), 320.0, |ui| {
         ui.checkbox(&mut settings.enabled, "Enabled");
         let enabled = settings.enabled;

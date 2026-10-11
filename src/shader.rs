@@ -1,4 +1,4 @@
-use anarchy::anyhow;
+use gearbox::anyhow;
 use bytemuck::{Pod, Zeroable};
 use gearbox::{AssetVault, AtlasTextureVault, BindlessArrayTextureVault, TextureHandle};
 use magician_vgpu::{ChunkedBufferContent, TreeBufferContent, VirtualGpu};
@@ -59,8 +59,8 @@ impl Default for SDFRawShape {
             center: (0.0.into(), 0.0.into()),
             dimensions: (0.0.into(), 0.0.into()),
             shape_ty: 0,
-            looks_ptrs: std::u32::MAX,
-            next_ptrs: std::u32::MAX,
+            looks_ptrs: u32::MAX,
+            next_ptrs: u32::MAX,
             _pad0: 0
         }
     }
@@ -215,7 +215,7 @@ impl Default for SDFRawStyle {
             primary_color: (1.0.into(), 1.0.into(), 1.0.into(), 0.0.into()),
             border_color: (1.0.into(), 1.0.into(), 1.0.into(), 0.0.into()),
             border_width: 0.0.into(),
-            texture_ptr: std::u32::MAX,
+            texture_ptr: u32::MAX,
             _padding: (0, 0),
         }
     }

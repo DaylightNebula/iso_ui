@@ -1,4 +1,6 @@
-.claude/
+# local Claude settings, but not the repo skill
+.claude/*
+!.claude/skills/
 target/
 shader_dbg/
 shader_out/

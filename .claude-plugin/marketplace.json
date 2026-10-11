@@ -1,0 +1,14 @@
+{
+  "name": "iso-ui",
+  "description": "Skills for building with the iso_ui SDF UI library",
+  "owner": {
+    "name": "DaylightNebula"
+  },
+  "plugins": [
+    {
+      "name": "iso-ui",
+      "source": "./plugins/iso-ui",
+      "description": "Teaches Claude how to build UI with iso_ui: flexbox layout, anchors, entity widgets, theming and immediate mode widgets"
+    }
+  ]
+}

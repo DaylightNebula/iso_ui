@@ -1,4 +1,4 @@
-use anarchy::macros::{Getters, GettersMut, Setters};
+use getset::{Getters, MutGetters, Setters};
 use gearbox::TextureHandle;
 use magician_vgpu::{ChunkHandle, TreeBufferElement, glam::*};
 use mutual::CowData;
@@ -10,7 +10,8 @@ use crate::{shader::{SDFRawBezier, SDFRawGlyph, SDFRawRectangle, SDFRawShape, SD
 /// `screen_dimensions` is the render target size in pixels, `time` is elapsed
 /// application time in seconds for animation, and `mode` selects how shapes are
 /// colored.
-#[derive(Debug, Getters, Setters, GettersMut, Clone, PartialEq)]
+#[derive(Debug, Getters, Setters, MutGetters, Clone, PartialEq)]
+#[getset(get = "pub", set = "pub", get_mut = "pub")]
 pub struct SDFMetadata {
     pub screen_dimensions: Vec2,
     pub time: f32,
@@ -38,7 +39,8 @@ pub enum SDFMode {
 /// `crate::shader::SDFRawShape` and shape-specific detail is stored in
 /// `crate::ChunkedBuffer`s. The `handles` field records the GPU chunks written
 /// during that conversion and is not set by callers.
-#[derive(Default, Getters, Setters, GettersMut, Clone)]
+#[derive(Default, Getters, Setters, MutGetters, Clone)]
+#[getset(get = "pub", set = "pub", get_mut = "pub")]
 pub struct SDFElement {
     pub center: Vec2,
     pub dimensions: Vec2,
@@ -82,7 +84,7 @@ impl SDFRawStyleHandle {
     /// as "no pointer".
     pub fn handle_ptr(&self) -> u32 {
         match &self {
-            SDFRawStyleHandle::Empty => std::u32::MAX,
+            SDFRawStyleHandle::Empty => u32::MAX,
             SDFRawStyleHandle::Rectangle(chunk_handle) => *chunk_handle.start_idx(),
             SDFRawStyleHandle::Curve(chunk_handle) => *chunk_handle.start_idx(),
             SDFRawStyleHandle::Glyph(_, ptr) => *ptr.start_idx(),
@@ -92,7 +94,8 @@ impl SDFRawStyleHandle {
 }
 
 /// Fill and border colors applied when rasterizing an `SDFElement`.
-#[derive(Debug, Getters, Setters, GettersMut, Clone, PartialEq)]
+#[derive(Debug, Getters, Setters, MutGetters, Clone, PartialEq)]
+#[getset(get = "pub", set = "pub", get_mut = "pub")]
 pub struct SDFStyle {
     pub primary_color: Vec4,
     pub border_color: Vec4,

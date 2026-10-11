@@ -1,13 +1,10 @@
 use std::sync::Arc;
 
-use anarchy::{
-    EntityBuilder, Event, EventSystemMinIDTracker, Input, Query, Res, WorldDatabase, anyhow,
-    macros::{info, system},
-};
-use cell::{App, Graphics};
 use gearbox::{
-    AssetContent, BasicMaterial, BasicMesh, Camera, GearboxRenderPlugin, MaterialRef, MeshRef,
-    TextureType, TextureVault, Transform, shaders::basic_vertex,
+    App, AssetContent, BasicMaterial, BasicMesh, Camera, GearboxRenderPlugin, Graphics,
+    MaterialRef, MeshRef, TextureType, TextureVault, Transform,
+    anarchy::{Event, Query, Res, World},
+    anyhow, shaders::basic_vertex, spawn,
 };
 use iso_ui::*;
 use magician_vgpu::{
@@ -24,11 +21,16 @@ fn main() -> anyhow::Result<()> {
         .run()
 }
 
-#[system]
-fn setup(graphics: Res<Graphics>) {
-    let test_texture = TextureVault::current(world, &graphics)?.load(
+fn setup(world: World, graphics: Res<Graphics>) {
+    if let Err(err) = build_scene(&world, &graphics) {
+        log::error!("Failed to build the scene: {err:#}");
+    }
+}
+
+fn build_scene(world: &World, graphics: &Graphics) -> anyhow::Result<()> {
+    let test_texture = TextureVault::current(world, graphics)?.load(
         world,
-        AssetContent::Binary(Box::new(*include_bytes!("cobblestone.png"))),
+        AssetContent::Binary(Box::new(*include_bytes!("../../gearbox/examples/cobblestone.png"))),
         TextureType::PNG,
     )?;
 
@@ -50,28 +52,18 @@ fn setup(graphics: Res<Graphics>) {
         },
     ];
 
-    let mesh = BasicMesh::new(&*graphics, &vertices, &[0, 1, 2]);
+    let mesh = BasicMesh::new(graphics, &vertices, &[0, 1, 2]);
 
-    world.insert(
-        EntityBuilder::default()
-            .add(Transform::identity())
-            .add(MaterialRef::new(BasicMaterial::new(glam::Vec4::new(
-                0.1, 0.8, 0.2, 1.0,
-            ))))
-            .add(MeshRef::new(mesh))
-            .build(),
-    );
+    spawn(world, vec![
+        Box::new(Transform::identity()),
+        Box::new(MaterialRef::new(BasicMaterial::new(glam::Vec4::new(0.1, 0.8, 0.2, 1.0)))),
+        Box::new(MeshRef::new(mesh)),
+    ]);
 
-    world.insert(
-        EntityBuilder::default()
-            .add(Transform::new(
-                glam::Vec3::new(0.0, 0.0, 6.0),
-                glam::Quat::IDENTITY,
-                glam::Vec3::ONE,
-            ))
-            .add(Camera::default())
-            .build(),
-    );
+    spawn(world, vec![
+        Box::new(Transform::new(glam::Vec3::new(0.0, 0.0, 6.0), glam::Quat::IDENTITY, glam::Vec3::ONE)),
+        Box::new(Camera::default()),
+    ]);
 
     let font_bytes = include_bytes!("./LiberationSans-Regular.ttf");
     let font = Arc::new(SDFFont::new(font_bytes)?);
@@ -81,10 +73,7 @@ fn setup(graphics: Res<Graphics>) {
         Val::Px(20.0),
         Val::Px(20.0),
     )));
-    root.set_display(Display::FlexColumn {
-        vertical: Align::End,
-        horizontal: Align::End,
-    });
+    root.set_column(JustifyContent::End, AlignItems::End);
     root.set_width(Val::PercentWidth(0.5));
     root.set_height(Val::PercentHeight(0.5));
     root.set_background(Background::Color(Vec4::new(0.05, 0.05, 0.05, 1.0)));
@@ -115,7 +104,7 @@ fn setup(graphics: Res<Graphics>) {
     root_b.set_border_color(Some(Vec4::new(0.5, 0.5, 0.5, 1.0)));
     root_b.set_border(Val::Px(1.0));
     root_b.set_border_radius(RectCorners::single(Val::Px(15.0)));
-    root_b.set_listener(test_listener);
+    root_b.set_listener(|_, interaction| log::info!("Test Listener Triggered! {interaction:?}"));
     root_b.set_text(Some(Text {
         font,
         content: "Hello World!".into(),
@@ -128,23 +117,16 @@ fn setup(graphics: Res<Graphics>) {
     root.add(root_a);
     root.add(root_b);
 
-    world.insert(EntityBuilder::default().add(UINodeSDFRoot(root)).build());
+    spawn(world, vec![Box::new(UINodeSDFRoot(root))]);
+    Ok(())
 }
 
-static EVENT_MIN_ID_TRACKER: EventSystemMinIDTracker = EventSystemMinIDTracker::new();
-
-#[system]
-fn update(query: Query<(&MeshRef, &mut Transform)>, pressed_events: Event<UINodePressedEvent>) {
-    for (_mesh, mut transform) in query.as_iter() {
+fn update(mut query: Query<(&'static MeshRef, &'static mut Transform)>, pressed_events: Event<UINodePressedEvent>) {
+    while let Ok(Some((_, (_mesh, mut transform)))) = query.next() {
         transform.rotate_by(Quat::from_euler(glam::EulerRot::XYZ, 0.01, 0.01, 0.01));
     }
 
-    for event in pressed_events.read(&EVENT_MIN_ID_TRACKER) {
-        info!("Pressed \"{}\"", event.id);
+    for event in pressed_events.read() {
+        log::info!("Pressed \"{}\"", event.id);
     }
-}
-
-#[system]
-fn test_listener(input: Input<Interaction>) {
-    info!("Test Listener Triggered! {:?}", *input)
 }
