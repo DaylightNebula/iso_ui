@@ -13,7 +13,6 @@ pub use render::*;
 
 /// Root of a UINode that is to be rendered as SDFs.
 #[derive(Debug, Default, Deref, DerefMut, Component)]
-#[component(no_serialize)]
 pub struct UINodeSDFRoot(pub UINode);
 
 /// A component of raw elements that should be rendered.
@@ -23,7 +22,6 @@ pub struct UINodeSDFRoot(pub UINode);
 /// Elements from `UINodeSDFRoot` are treated as have a
 /// priority value of zero.
 #[derive(Default, Component)]
-#[component(no_serialize)]
 pub struct UIRawElements {
     pub elements: Vec<SDFElement>,
     pub priority: i32,

@@ -164,9 +164,7 @@ pub struct ThemeOverride {
     pub text: Option<Vec4>,
     pub dim: Option<Vec4>,
     pub error: Option<Vec4>,
-    #[serde(skip)]
     pub font: Option<Arc<SDFFont>>,
-    #[serde(skip)]
     pub bold: Option<Arc<SDFFont>>,
 }
 
