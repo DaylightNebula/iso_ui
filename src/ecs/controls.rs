@@ -4,6 +4,7 @@
 
 use anarchy::{Component, EntityID, Event, Query, Res, ResMut, SystemPin, World, after, and, before, pin};
 use gearbox::{App, Plugin};
+use serde::{Deserialize, Serialize};
 
 use crate::{ComputedNode, Display, KeyOutcome, Node, PositionType, Rect, UiFocus, UiInput, Val, apply_key, pick_ui};
 
@@ -35,7 +36,7 @@ impl Checkbox {
 }
 
 /// How a `Slider` spreads its range along its node.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum SliderScale {
     #[default]
     Linear,

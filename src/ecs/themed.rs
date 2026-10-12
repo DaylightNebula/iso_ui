@@ -37,6 +37,7 @@ impl TextSize {
 
 /// Text a node shows in the `UiTheme`'s fonts. Change `text` to change what it says.
 #[derive(Clone, Debug, Component)]
+#[component(no_serialize)]
 pub struct Label {
     pub text: String,
     pub size: TextSize,
@@ -72,6 +73,7 @@ pub struct SevenSegment {
 
 /// What a themed widget is, so `restyle_themed` knows how to style it and where its parts are.
 #[derive(Clone, Debug, Component)]
+#[component(no_serialize)]
 pub enum Themed {
     Frame,
     Separator,

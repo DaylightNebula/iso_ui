@@ -14,6 +14,7 @@ use crate::{
 /// `Hierarchy`, and a node without a `Node` parent is a root, laid out in the window. Sizes are
 /// logical pixels, scaled to the window's scale factor when laid out.
 #[derive(Debug, Default, Clone, Component)]
+#[component(no_serialize)]
 pub struct Node(pub Style);
 
 /// `v` logical pixels.
